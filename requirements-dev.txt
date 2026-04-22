@@ -1,0 +1,14 @@
+-r requirements.txt
+
+# Testes
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.12.0
+
+# Qualidade de código
+ruff>=0.3.0
+mypy>=1.8.0
+black>=24.0.0
+
+# Type stubs
+types-requests>=2.31.0
