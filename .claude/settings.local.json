@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(python -c ' *)",
+      "Bash(grep -E \"\\\\.\\(py|txt|bat\\)$\")",
+      "Bash(.venv/Scripts/python -m pytest tests/test_extractor.py tests/test_excel_export.py tests/test_ai_client.py -v --tb=short)",
+      "Bash(.venv/Scripts/python -m pytest tests/ -v --tb=short)",
+      "Bash(awk '{print $5, $9}')",
+      "Bash(pandoc \"C:\\\\Users\\\\Veloso\\\\Downloads\\\\PLANILHA DE GADO PARA IR.docx\" -o \"C:\\\\Users\\\\Veloso\\\\Downloads\\\\planilha_gado_ir.md\" --track-changes=all)",
+      "Read(//c/Users/Veloso/Downloads/**)",
+      "Read(//c/Users/Veloso/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/1e943093-009b-4074-bef2-b3f55a4a4320/37ec7f61-6763-4415-b0b6-f27952457a7f/skills/docx/**)",
+      "Bash(python scripts/office/unpack.py \"C:\\\\Users\\\\Veloso\\\\Downloads\\\\PLANILHA DE GADO PARA IR.docx\" \"C:\\\\Users\\\\Veloso\\\\Downloads\\\\planilha_unpacked\")",
+      "Bash(.venv/Scripts/python -m pytest tests/test_ir_report.py -v --tb=short)",
+      "Bash(start \"\" .venv\\\\Scripts\\\\pythonw.exe app.py)",
+      "Bash(dir .venv\\\\Scripts\\\\python* /b)",
+      "PowerShell(Start-Process -FilePath \"D:\\\\01_Projetos_Ativos\\\\NFA Extractor\\\\.venv\\\\Scripts\\\\pythonw.exe\" -ArgumentList \"D:\\\\01_Projetos_Ativos\\\\NFA Extractor\\\\app.py\" -WorkingDirectory \"D:\\\\01_Projetos_Ativos\\\\NFA Extractor\")",
+      "Bash(.venv/Scripts/python.exe app.py)",
+      "Bash(.venv/Scripts/pip.exe install *)",
+      "PowerShell(Start-Process -FilePath \"D:\\\\01_Projetos_Ativos\\\\NFA Extractor\\\\.venv\\\\Scripts\\\\pythonw.exe\" -ArgumentList \"app.py\" -WorkingDirectory \"D:\\\\01_Projetos_Ativos\\\\NFA Extractor\")"
+    ]
+  }
+}
