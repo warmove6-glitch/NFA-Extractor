@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import logging
-import time
+import os
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
@@ -21,13 +21,25 @@ class ChatRequest(BaseModel):
 app = FastAPI(title="ORGATEC Sovereign API", version="6.4.1")
 
 # --- CONFIGURAÇÃO DE SEGURANÇA (SQUAD DELTA) ---
-# Em desenvolvimento, permitimos origens locais de forma mais flexível
+# Em produção, defina ALLOWED_ORIGINS no config.env com as origens corretas.
+# Ex: ALLOWED_ORIGINS=https://app.orgatec.com.br,https://admin.orgatec.com.br
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS: list[str] = (
+    [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    if _raw_origins
+    else [
+        "http://localhost:5173",   # Vite dev
+        "http://localhost:3000",   # CRA / alternativo
+        "http://127.0.0.1:5173",
+    ]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Permitir todos para resolver o problema de sincronização de portas
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
 
@@ -67,7 +79,7 @@ router_agente = APIRouter(prefix="/agente", tags=["Agente"])
 
 @router_agente.post("/chat")
 async def chat_agente(request: ChatRequest):
-    from ai_client import perguntar
+    from src.infrastructure.ai_client import perguntar
     try:
         res = perguntar(notas=[], context_ia=request.contexto, pergunta=request.pergunta)
         return {"response": res}
