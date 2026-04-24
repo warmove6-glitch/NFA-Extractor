@@ -1,0 +1,98 @@
+name: Build — Executável Windows
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: 'Versão do executável (ex: 1.2.0)'
+        required: true
+        default: '0.0.0'
+
+jobs:
+  build-windows:
+    name: Build PyInstaller (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Instalar dependências
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Definir versão
+        id: versao
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "VERSAO=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          else
+            echo "VERSAO=${{ github.event.inputs.versao }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build PyInstaller
+        run: |
+          pyinstaller `
+            --onedir `
+            --windowed `
+            --name "OrgExtNF" `
+            --add-data "assets;assets" `
+            --hidden-import "customtkinter" `
+            --hidden-import "pdfplumber" `
+            --hidden-import "reportlab" `
+            --hidden-import "openpyxl" `
+            --hidden-import "requests" `
+            --hidden-import "PIL" `
+            --hidden-import "matplotlib" `
+            --collect-all "customtkinter" `
+            app.py
+
+      - name: Verificar executável
+        run: |
+          if (Test-Path "dist\OrgExtNF\OrgExtNF.exe") {
+            Write-Host "Executavel gerado com sucesso"
+          } else {
+            Write-Error "Executavel nao encontrado"
+            exit 1
+          }
+
+      - name: Compactar distribuição
+        run: |
+          Compress-Archive -Path dist\OrgExtNF\* -DestinationPath `
+            "OrgExtNF-v${{ steps.versao.outputs.VERSAO }}-windows.zip"
+
+      - name: Upload do artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrgExtNF-windows-${{ steps.versao.outputs.VERSAO }}
+          path: OrgExtNF-v${{ steps.versao.outputs.VERSAO }}-windows.zip
+          retention-days: 30
+
+      - name: Criar Release (apenas em tags)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OrgExtNF-v${{ steps.versao.outputs.VERSAO }}-windows.zip
+          name: OrgExtNF v${{ steps.versao.outputs.VERSAO }}
+          body: |
+            ## OrgExtNF v${{ steps.versao.outputs.VERSAO }}
+
+            ### Instalação
+            1. Baixe o arquivo `.zip`
+            2. Extraia em qualquer pasta
+            3. Execute `OrgExtNF.exe`
+
+            ### Requisitos
+            - Windows 10/11 (64-bit)
+            - Sem necessidade de instalar Python

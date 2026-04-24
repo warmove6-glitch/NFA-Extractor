@@ -1,54 +1,85 @@
-# NFA Extractor — SEFAZ (Orgatec / Sentinela)
+# 🏛️ ORGATEC — Auditoria Fiscal Soberana & BI
 
-**NFA Extractor** é uma aplicação completa (Desktop App & Backend CLI) desenvolvida para auditar, extrair e projetar inteligência de negócios a partir de Notas Fiscais Avulsas (NFAs) de Produtores Rurais do Estado de Goiás.
+![Banner](https://img.shields.io/badge/Status-Operational-success?style=for-the-badge&logo=ai&color=0ea5e9)
+![Architecture](https://img.shields.io/badge/Architecture-Clean_Architecture-0ea5e9?style=for-the-badge)
+![Framework](https://img.shields.io/badge/Stack-React_19_|_FastAPI-6366f1?style=for-the-badge)
+![Squad](https://img.shields.io/badge/Squad-Antigravity-00D4FF?style=for-the-badge)
 
-## 🎯 Arquitetura de Inteligência Múltipla ("Tríplice Aliança")
-O projeto inclui um `ai_client.py` rodando um prompt mestre de **Consultoria Sênior de Agronegócio** operando através de uma cadeia resiliente (Fallback Chain):
-1. **Claude 3.5 Sonnet (API)**: O cérebro principal. Especialista em redação técnica, compliance tributário e auditoria.
-2. **Google Gemini 1.5 Pro (API)**: A segunda linha de defesa. Ativado caso o Claude fique indisponível, oferecendo janelas de contexto gigantes.
-3. **Ollama Llama 3.1 (Local)**: A garantia de privacidade absoluta. Atuando offline sem enviar dados da fazenda para a nuvem caso selecionado.
+**ORGATEC** é uma plataforma de auditoria forense e inteligência tributária projetada para transformar Notas Fiscais Avulsas (NFAs) em laudos técnicos de alta precisão. Utilizando a **Squad Antigravity**, o sistema automatiza a detecção de fraudes e anomalias com rigor matemático e jurídico.
 
-## 📈 Inteligência de Negócios (Business Intelligence)
-O parser (`extractor.py`) não apenas lê texto. Ele conta com validação estrita (Pydantic V2) e implementa Matemática de Mercado:
-- **Índice HHI**: Calcula ativamente o *Herfindahl-Hirschman Index* sobre faturamento bruto (apenas Vendas, ignorando remessas) para classificar na hora o seu Risco de Dependência de Mercado.
-- **Preço Médio Unitário**: Extrai a média R$/Cabeça para a IA confrontar o preço das notas automaticamente com o índice regional de arrobas do CEPEA/SENAR-GO.
+---
 
-## 🛠️ Como Instalar e Rodar
+## 💎 Diferenciais Soberanos
 
-1. **Pré-requisitos**:
-   Instale o Python 3.12+ no Windows.
+### 🧠 Orquestração Multi-Agente (LangGraph)
+Diferente de extratores simples, o ORGATEC utiliza uma squad de agentes especializados:
+*   **@Alfa (Arquitetura):** Mantém a integridade sistêmica e Clean Architecture.
+*   **@Sigma (Dados):** Motor quantitativo que roda modelos Bayesianos de risco.
+*   **@Gama (Compliance):** Consultor sênior que emite pareceres baseados na legislação.
+*   **@Delta (QA/SRE):** Garante que nenhum dado saia sem validação tripla (Linter, Security, Type).
 
-2. **Clone e Dependências**:
-   ```powershell
-   git clone <este-repositorio>
-   cd "NFA Extractor"
-   pip install -r requirements.txt
-   ```
+### 🎨 Interface "Centro de Comando"
+O frontend foi reconstruído em **React 19** com uma estética premium:
+- **Matrix Background:** Imersão visual em operações táticas.
+- **Glassmorphism:** UI moderna com transparências e desfoques.
+- **Dashboard Dinâmico:** Métricas em tempo real extraídas diretamente do banco de dados.
 
-3. **Configuração de IAs (Chaves de API)**:
-   Crie um arquivo chamado `config.env` na raiz do projeto (mesma pasta de `app.py`) e coloque dentro dele:
-   ```env
-   ANTHROPIC_API_KEY=sk-ant-SuaChaveAqui
-   GOOGLE_API_KEY=AIzaSuaChaveAqui
-   ```
-   *(Proteja este arquivo e nunca suba ele no Git)*.
+---
 
-4. **Rodando a Interface de Usuário Gráfica (App)**:
-   ```powershell
-   python app.py
-   ```
+## 🛠️ Stack Tecnológica
 
-5. **Rodando o Extrator Rápido no Terminal**:
-   ```powershell
-   python extrair_nfa.py "caminho/do/seu/arquivo.pdf" "meus_dados.xlsx"
-   ```
+| Camada | Tecnologia |
+| :--- | :--- |
+| **Frontend** | React 19, Vite, Tailwind CSS 4, Framer Motion |
+| **Backend** | FastAPI, Python 3.12, Pydantic V2 |
+| **Inteligência** | Pydantic AI, LangGraph, Claude 3.5, Gemini 1.5 |
+| **Dados** | SQLAlchemy (Postgres / Fallback SQLite) |
+| **Arquitetura** | Clean Architecture (Domain, Application, Infrastructure) |
 
-## 🧪 Suíte de Testes e SRE
-A qualidade do parser é garantida por uma suíte rigorosa automatizada usando `pytest`. 
-Para testar, basta rodar:
+---
+
+## ⚙️ Estrutura do Projeto
+
+O projeto segue rigorosamente os padrões de **Clean Architecture**:
+
+- `api/`: Controladores e rotas FastAPI.
+- `src/domain/`: Regras de negócio, modelos Pydantic e lógica de extração.
+- `src/application/`: Serviços de auditoria, analytics e geradores de relatórios.
+- `src/infrastructure/`: Persistência de dados e clientes de IA.
+- `data/`: Data Lake centralizado contendo bancos de dados, logs e laudos.
+- `frontend/`: Aplicação web moderna em React.
+
+---
+
+## 🚀 Operação Técnica
+
+### 1. Preparação
+Certifique-se de que o PostgreSQL está rodando via Docker:
+```powershell
+docker-compose up -d
+```
+
+### 2. Ativação Fullstack
+Para iniciar simultaneamente o backend e o frontend em modo de desenvolvimento:
+```powershell
+./run_fullstack.bat
+```
+*   **API:** `http://localhost:8081`
+*   **APP:** `http://localhost:5173` (ou porta informada pelo Vite)
+
+### 3. Trilha de Auditoria
+O sistema gera logs imutáveis com hashes de integridade em `data/logs/`, garantindo conformidade total com protocolos de segurança.
+
+---
+
+## 🛡️ Qualidade & SRE
+A suíte de testes valida a integridade do parser e da conexão com o banco:
 ```powershell
 pytest tests/ -v
 ```
 
 ---
-*Gerenciado pela Squad Orgatec/Sentinela: @Alfa (Arquiteto), @Beta (Frontend), @Delta (QA e SRE).*
+
+> [!IMPORTANT]
+> **ORGATEC** opera sob o **Protocolo Soberano**. Toda análise é pautada por evidências puras e matemática irrefutável.
+> **Squad Antigravity — Transformando dados fiscais em vantagem competitiva.**
