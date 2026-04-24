@@ -136,15 +136,22 @@ const AuditoriaModule = () => {
                   </div>
                 </div>
                 
-                <div className="bg-sovereign-950 p-6 rounded-2xl border border-sovereign-800 mb-6">
-                  <p className="text-slate-200 leading-relaxed italic">
-                    "O cruzamento de dados revelou um excedente patrimonial não lastreado. Hipótese técnica: Hub de lavagem detectado..."
+                <div className="bg-sovereign-950 p-6 rounded-2xl border border-sovereign-800 mb-6 overflow-y-auto max-h-64">
+                  <p className="text-slate-200 leading-relaxed italic whitespace-pre-wrap text-sm">
+                    {progressData.resultado || "O cruzamento de dados revelou um excedente patrimonial não lastreado. Hipótese técnica: Hub de lavagem detectado..."}
                   </p>
                 </div>
+
                 
-                <button className="bg-white text-sovereign-950 font-black px-8 py-3 rounded-xl hover:bg-slate-200 transition-all">
+                <a 
+                  href={`${api.defaults.baseURL}/auditoria/download/${taskId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block bg-white text-sovereign-950 font-black px-8 py-3 rounded-xl hover:bg-slate-200 transition-all text-center"
+                >
                   BAIXAR LAUDO FORENSE PDF
-                </button>
+                </a>
+
               </motion.div>
             ) : (
               <div className="sovereign-card p-8 h-full flex flex-col items-center justify-center text-center text-sovereign-600 border-dashed">

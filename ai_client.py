@@ -26,11 +26,15 @@ def _carregar_env(chave: str) -> str:
                     if k == chave: return v
     return os.getenv(chave, '')
 
-# MODELOS 2026
-CLAUDE_MODEL = 'claude-sonnet-4-20250514'
-GEMINI_MODEL = 'gemini-flash-lite-latest'
+# MODELOS 2026 (SQUAD ANTIGRAVITY)
+CLAUDE_MODEL = 'claude-3-5-sonnet-20241022' # Atualizado para Sonnet 3.5
+GEMINI_MODEL = 'gemini-flash-latest'       # Nome estável conforme lista de modelos
+
+
+
 OLLAMA_URL   = 'http://localhost:11434'
 OLLAMA_MODEL = 'llama3.1:8b'
+
 
 # ── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
 
@@ -117,18 +121,36 @@ def _analisar_claude(prompt: str, sys: str, callback=None) -> str:
         return f"[Claude Falhou: {e}]"
 
 def _analisar_gemini(prompt: str, sys: str, callback=None) -> str:
+    import time
     api_key = _carregar_env('GOOGLE_API_KEY')
     if not api_key: return "[Gemini Inativo]"
     cliente = genai.Client(api_key=api_key)
-    try:
-        response = cliente.models.generate_content(
-            model=GEMINI_MODEL, contents=prompt,
-            config=types.GenerateContentConfig(system_instruction=sys)
-        )
-        return response.text
-    except Exception as e:
-        logger.error(f"Gemini: Erro — {e}")
-        return f"[Gemini Falhou: {e}]"
+    
+    modelos_tentar = [GEMINI_MODEL, 'gemini-1.5-flash-latest', 'gemini-1.5-pro-latest']
+
+    
+    for model_name in modelos_tentar:
+        for tentativa in range(3):
+            try:
+                response = cliente.models.generate_content(
+                    model=model_name, contents=prompt,
+                    config=types.GenerateContentConfig(system_instruction=sys)
+                )
+                return response.text
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    wait_time = 20 * (tentativa + 1)
+                    logger.warning(f"Gemini ({model_name}): Rate limit (429). Aguardando {wait_time}s... (Tentativa {tentativa+1}/3)")
+                    if callback: callback(f"\n[!] Rate Limit Gemini. Pausando {wait_time}s para recuperação...\n")
+                    time.sleep(wait_time)
+                    continue
+                
+                logger.error(f"Gemini ({model_name}): Erro — {e}")
+                break # Tenta o próximo modelo se não for 429
+    
+    return f"[Gemini Falhou após rotação e retries]"
+
 
 def _analisar_ollama(prompt: str, sys: str, callback=None) -> str:
     """Motor Local com Streaming para evitar hangs."""

@@ -86,8 +86,10 @@ def gerar_pdf(notas: list[NFA], saida: str, analise_ia: str = '', nome_contribui
     style_tit = ParagraphStyle('Tit', parent=styles['Heading1'], alignment=TA_CENTER, fontSize=18, textColor=AZUL_ESC, spaceAfter=20)
     style_sec = ParagraphStyle('Sec', parent=styles['Heading2'], fontSize=12, textColor=AZUL_MED, spaceBefore=15, spaceAfter=10, borderPadding=5)
     style_txt = ParagraphStyle('Txt', parent=styles['Normal'], fontSize=10, leading=14, alignment=TA_LEFT)
+    small     = ParagraphStyle('Small', parent=styles['Normal'], fontSize=8, leading=10)
     
     elements = []
+    res = resumo_geral(notas, nome_contribuinte=nome_contribuinte)
     
     # 1. Cabeçalho de Identificação
     elements.append(Paragraph("LAUDO TÉCNICO DE AUDITORIA FISCAL E COMPLIANCE", style_tit))
@@ -106,15 +108,27 @@ def gerar_pdf(notas: list[NFA], saida: str, analise_ia: str = '', nome_contribui
         ('PADDING', (0,0), (-1,-1), 6),
     ]))
     elements.append(t_info)
-    elements.append(Spacer(1, 1*cm))
+    elements.append(Spacer(1, 0.5*cm))
+
+    # Cards de Resumo (Executivo)
+    def _card_val(label, value, bg):
+        return _resumo_card(label, value, bg)
+
+    cards_data = [
+        [_resumo_card('Total de Notas', str(res['total_notas']), AZUL_CLAR),
+         _resumo_card('Cabecas', f"{res['total_cabecas']:.0f}", VERDE_CLAR),
+         _resumo_card('Valor Total', f"R$ {res['total_valor']:,.2f}", CINZA)]
+    ]
+    t_cards = Table(cards_data, colWidths=[(W-4.5*cm)/3]*3)
+    t_cards.setStyle(TableStyle([('ALIGN', (0,0), (-1,-1), 'CENTER')]))
+    elements.append(t_cards)
+    elements.append(Spacer(1, 0.5*cm))
 
     # 2. Parecer Técnico da Squad (Análise Anti-Fraude)
     elements.append(Paragraph("1. PARECER TÉCNICO E VEREDITO DE RISCO", style_sec))
     if analise_ia:
         import re
-        # Limpa o markdown da IA para o formato estrito do ReportLab
-        texto = analise_ia.replace('#', '') # Remove hashtags de títulos
-        # Regex para substituir pares de ** por <b> e </b> de forma alternada
+        texto = analise_ia.replace('#', '') 
         partes = re.split(r'(\*\*)', texto)
         novo_texto = ""
         aberto = False
@@ -124,248 +138,45 @@ def gerar_pdf(notas: list[NFA], saida: str, analise_ia: str = '', nome_contribui
                 aberto = not aberto
             else:
                 novo_texto += p
-        # Garante fechamento se a IA esqueceu
         if aberto: novo_texto += "</b>"
         
         for p in novo_texto.split('\n\n'):
             if p.strip():
-                # Escapa caracteres que podem quebrar o XML (exceto as tags que queremos)
                 p_safe = p.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 p_safe = p_safe.replace('&lt;b&gt;', '<b>').replace('&lt;/b&gt;', '</b>')
                 elements.append(Paragraph(p_safe.strip(), style_txt))
                 elements.append(Spacer(1, 0.3*cm))
     
-    # 3. Relatório de Irregularidades Identificadas (FOCO ÚNICO)
+    # 3. Relatório de Irregularidades
     if anomalias:
-        elements.append(Spacer(1, 1*cm))
-        elements.append(Paragraph("2. EVIDÊNCIAS DE FRAUDE E INCONSISTÊNCIAS", style_sec))
-        elements.append(Paragraph("Abaixo estão listados exclusivamente os documentos que apresentam irregularidades críticas ou desvios de padrão detectados pelo motor anti-fraude:", style_txt))
         elements.append(Spacer(1, 0.5*cm))
-        
+        elements.append(Paragraph("2. EVIDÊNCIAS DE FRAUDE E INCONSISTÊNCIAS", style_sec))
         header = [["NFA", "DATA", "NATUREZA", "VALOR (R$)", "RISCO DETECTADO"]]
         data_anom = header + [[n['NFA'], n['Data'], n['Natureza'], f"{n['Valor']:,.2f}", n['Motivo']] for n in anomalias]
-        
         t_anom = Table(data_anom, colWidths=[2.5*cm, 2.5*cm, 3.5*cm, 3*cm, 4.5*cm])
         t_anom.setStyle(TableStyle([
             ('BACKGROUND', (0,0), (-1,0), AZUL_ESC),
             ('TEXTCOLOR', (0,0), (-1,0), BRANCO),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('FONTSIZE', (0,0), (-1,-1), 8),
-            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.whitesmoke])
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey)
         ]))
         elements.append(t_anom)
-    else:
-        elements.append(Paragraph("Nenhuma irregularidade crítica ou fraude foi detectada pelo sistema neste lote de documentos analisados.", style_txt))
     
+    # Gráficos
+    graficos = _gerar_graficos(res)
+    if graficos:
+        elements.append(PageBreak())
+        elements.append(Paragraph("ANEXO I: VISUALIZAÇÃO DE DADOS", style_sec))
+        for g in graficos:
+            elements.append(g)
+            elements.append(Spacer(1, 0.5*cm))
+
     # 4. Encerramento
     elements.append(Spacer(1, 2*cm))
     elements.append(HRFlowable(width="100%", thickness=1, color=AZUL_ESC))
     elements.append(Paragraph("OrgAudi — Sistema Soberano de Auditoria Fiscal", ParagraphStyle('End', parent=style_txt, alignment=TA_CENTER, fontSize=8, textColor=colors.grey)))
 
     doc.build(elements, onFirstPage=_header_footer, onLaterPages=_header_footer)
-
-    def _card(label, value, cor_bg=AZUL_CLAR):
-        return Table(
-            [[Paragraph(f'<b>{label}</b>', small),
-              Paragraph(f'<b>{value}</b>', ParagraphStyle('CV', parent=styles['Normal'],
-                fontSize=13, fontName='Helvetica-Bold', textColor=AZUL_ESC, alignment=TA_CENTER))]],
-            colWidths=[None, None]
-        )
-
-    cards_data = [
-        [_resumo_card('Total de Notas', str(res['total_notas']), AZUL_CLAR),
-         _resumo_card('Cabecas Movimentadas', f"{res['total_cabecas']:.0f}", VERDE_CLAR),
-         _resumo_card('Valor Total', f"R$ {res['total_valor']:,.2f}", CINZA)],
-        [_resumo_card('Ticket Medio', f"R$ {res['ticket_medio']:,.2f}", CINZA),
-         _resumo_card('Compradores Distintos', str(len(res['top_dest'])), AZUL_CLAR),
-         _resumo_card('Meses de Operacao', str(len(res['por_mes'])), VERDE_CLAR)],
-    ]
-    t_cards = Table(cards_data, colWidths=[(W-3*cm)/3]*3, rowHeights=[2.0*cm, 2.0*cm])
-    t_cards.setStyle(TableStyle([
-        ('ALIGN',    (0,0), (-1,-1), 'CENTER'),
-        ('VALIGN',   (0,0), (-1,-1), 'MIDDLE'),
-        ('LEFTPADDING',  (0,0), (-1,-1), 4),
-        ('RIGHTPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING',   (0,0), (-1,-1), 4),
-        ('BOTTOMPADDING',(0,0), (-1,-1), 4),
-    ]))
-    story.append(t_cards)
-    story.append(Spacer(1, 0.5*cm))
-
-    # Gráficos Dinâmicos
-    graficos = _gerar_graficos(res)
-    if graficos:
-        if len(graficos) == 2:
-            t_graficos = Table([[graficos[0], graficos[1]]], colWidths=[(W-3*cm)/2]*2)
-            t_graficos.setStyle(TableStyle([
-                ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-                ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-            ]))
-            story.append(t_graficos)
-        else:
-            for g in graficos:
-                story.append(g)
-        story.append(Spacer(1, 0.5*cm))
-
-    # Tipos de operação
-    por_nat = res['por_natureza']
-    nat_txt = '    '.join(f"{k}: {v}" for k, v in por_nat.items())
-    story.append(Paragraph(f'<b>Tipos de operacao:</b>  {nat_txt}', normal))
-
-    # ── ANÁLISE IA (ESTRUTURADA) ──────────────────────────────────────────────
-    if analise_ia.strip():
-        story.append(PageBreak())
-        story.append(Paragraph('Analise Inteligente de Auditoria', h1))
-        story.append(HRFlowable(width='100%', thickness=2, color=AZUL_MED))
-        story.append(Spacer(1, 0.4*cm))
-        
-        for linha in analise_ia.split('\n'):
-            linha = linha.strip()
-            if not linha:
-                story.append(Spacer(1, 0.2*cm))
-                continue
-            
-            # Markdown parser simples
-            if linha.startswith('## '):
-                txt = linha.replace('## ', '').upper()
-                story.append(Paragraph(f'<b>{txt}</b>', styles['IA_H2']))
-            elif linha.startswith('### '):
-                txt = linha.replace('### ', '')
-                story.append(Paragraph(f'<b>{txt}</b>', styles['IA_H3']))
-            elif linha.startswith('- '):
-                txt = linha.replace('- ', '')
-                # Suporte robusto a negrito markdown ** -> <b>
-                import re
-                txt = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', txt)
-                story.append(Paragraph(f'• {txt}', styles['IA_ITEM']))
-            else:
-                import re
-                txt = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', linha)
-                story.append(Paragraph(txt, normal))
-
-    # ── PRINCIPAIS COMPRADORES (Lógica Unificada) ───────────────────────────
-    story.append(PageBreak())
-    story.append(Paragraph('Principais Compradores', h1))
-    story.append(HRFlowable(width='100%', thickness=2, color=AZUL_MED))
-    story.append(Spacer(1, 0.4*cm))
-
-    # Mapeamento de informações adicionais (CPF/Municipio)
-    dest_info = {}
-    for n in notas:
-        nome = n.destinatario.nome
-        if nome not in dest_info:
-            dest_info[nome] = {
-                'cpf_cnpj': n.destinatario.cpf_cnpj,
-                'municipio': n.destinatario.municipio
-            }
-
-    cab_dest = [[_th('Comprador'), _th('CPF/CNPJ'), _th('Municipio'),
-                 _th('Notas'), _th('Cabecas'), _th('Valor Total (R$)')]]
-    
-    # Ordenar por valor decrescente
-    for i, d in enumerate(sorted(res['top_dest'], key=lambda x: x['valor'], reverse=True)):
-        info = dest_info.get(d['nome'], {})
-        cab_dest.append([
-            Paragraph(d['nome'][:40], small),
-            Paragraph(info.get('cpf_cnpj',''), small),
-            Paragraph(info.get('municipio',''), small),
-            Paragraph(str(d['notas']), ParagraphStyle('RC', parent=small, alignment=TA_RIGHT)),
-            Paragraph(f"{d['cabecas']:.0f}", ParagraphStyle('RC', parent=small, alignment=TA_RIGHT)),
-            Paragraph(f"{d['valor']:,.2f}", ParagraphStyle('RC', parent=small, alignment=TA_RIGHT)),
-        ])
-
-    t_dest = Table(cab_dest, colWidths=[5.5*cm, 3.5*cm, 3*cm, 1.5*cm, 2*cm, 3*cm])
-    _estilo_tabela(t_dest, len(cab_dest))
-    story.append(t_dest)
-
-    # ── EVOLUÇÃO MENSAL ───────────────────────────────────────────────────────
-    story.append(Spacer(1, 0.8*cm))
-    story.append(Paragraph('Evolucao Mensal', h2))
-    story.append(HRFlowable(width='100%', thickness=1, color=AZUL_MED))
-    story.append(Spacer(1, 0.2*cm))
-
-    mes_rows = [[_th('Mes/Ano'), _th('Qtd. Notas'), _th('Cabecas'), _th('Valor (R$)')]]
-    for mes, v in res['por_mes'].items():
-        mes_rows.append([
-            Paragraph(mes, small),
-            Paragraph(str(v['notas']), ParagraphStyle('RC',parent=small,alignment=TA_RIGHT)),
-            Paragraph(f"{v['cabecas']:.0f}", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT)),
-            Paragraph(f"{v['valor']:,.2f}", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT)),
-        ])
-    # Total
-    mes_rows.append([
-        Paragraph('<b>TOTAL</b>', small),
-        Paragraph(f"<b>{res['total_notas']}</b>", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT,fontName='Helvetica-Bold')),
-        Paragraph(f"<b>{res['total_cabecas']:.0f}</b>", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT,fontName='Helvetica-Bold')),
-        Paragraph(f"<b>{res['total_valor']:,.2f}</b>", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT,fontName='Helvetica-Bold')),
-    ])
-
-    t_mes = Table(mes_rows, colWidths=[3*cm, 3*cm, 3*cm, 4*cm])
-    _estilo_tabela(t_mes, len(mes_rows), total_row=True)
-    story.append(t_mes)
-
-    # ── NOTAS FISCAIS (lista completa) ────────────────────────────────────────
-    story.append(PageBreak())
-    story.append(Paragraph('Relacao de Notas Fiscais Emitidas', h1))
-    story.append(HRFlowable(width='100%', thickness=2, color=AZUL_MED))
-    story.append(Spacer(1, 0.3*cm))
-
-    nfa_rows = [[
-        _th('Num.'), _th('Emissao'), _th('Natureza'), _th('Destinatario'),
-        _th('Municipio'), _th('Cab.'), _th('Valor (R$)')
-    ]]
-    for n in notas:
-        nfa_rows.append([
-            Paragraph(n.numero, small),
-            Paragraph(n.emissao, small),
-            Paragraph(n.natureza[:14], small),
-            Paragraph(n.destinatario.nome[:35], small),
-            Paragraph(n.destinatario.municipio[:18], small),
-            Paragraph(f"{n.quantidade_total:.0f}", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT)),
-            Paragraph(f"{n.valor_total:,.2f}", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT)),
-        ])
-
-    t_nfa = Table(
-        nfa_rows,
-        colWidths=[1.8*cm, 2.2*cm, 3.2*cm, 4.8*cm, 3.2*cm, 1.4*cm, 2.4*cm],
-        repeatRows=1
-    )
-    _estilo_tabela(t_nfa, len(nfa_rows))
-    story.append(t_nfa)
-
-    # ── ITENS DETALHADOS ─────────────────────────────────────────────────────
-    story.append(PageBreak())
-    story.append(Paragraph('Itens Detalhados por Nota', h1))
-    story.append(HRFlowable(width='100%', thickness=2, color=AZUL_MED))
-    story.append(Spacer(1, 0.3*cm))
-
-    item_rows = [[
-        _th('NFA'), _th('Data'), _th('Destinatario'),
-        _th('Cod.'), _th('Descricao'), _th('Qtd.'), _th('Vlr.Unit.'), _th('Vlr.Total')
-    ]]
-    for n in notas:
-        for p in n.produtos:
-            item_rows.append([
-                Paragraph(n.numero, small),
-                Paragraph(n.emissao, small),
-                Paragraph(n.destinatario.nome[:30], small),
-                Paragraph(p.codigo, small),
-                Paragraph(p.descricao[:45], small),
-                Paragraph(f"{p.quantidade:.0f}", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT)),
-                Paragraph(f"{p.vlr_unitario:,.2f}", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT)),
-                Paragraph(f"{p.vlr_total:,.2f}", ParagraphStyle('RC',parent=small,alignment=TA_RIGHT)),
-            ])
-
-    t_item = Table(
-        item_rows,
-        colWidths=[1.8*cm, 2*cm, 4*cm, 1.2*cm, 5.5*cm, 1.2*cm, 2*cm, 2.3*cm],
-        repeatRows=1
-    )
-    _estilo_tabela(t_item, len(item_rows))
-    story.append(t_item)
-
-    doc.build(story, onFirstPage=_header_footer, onLaterPages=_header_footer)
 
 
 def _th(txt: str) -> Paragraph:

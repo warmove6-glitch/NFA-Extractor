@@ -18,18 +18,28 @@ class ChatRequest(BaseModel):
     pergunta: str
     contexto: Optional[str] = ""
 
-app = FastAPI(title="ORGATEC Sovereign API", version="6.4.0")
+app = FastAPI(title="ORGATEC Sovereign API", version="6.4.1")
 
+# --- CONFIGURAÇÃO DE SEGURANÇA (SQUAD DELTA) ---
+# Em desenvolvimento, permitimos origens locais de forma mais flexível
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
-        "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175"
-    ],
+    allow_origins=["*"], # Permitir todos para resolver o problema de sincronização de portas
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+logger = logging.getLogger("uvicorn")
+@app.on_event("startup")
+async def startup_event():
+    from src.infrastructure.database_v2 import init_db
+    init_db()
+    logger.info("🛡️  ORGATEC SOVEREIGN SHIELD: ONLINE")
+    logger.info("📡  API rodando na porta 8081")
+
+
 
 # Injeção de Dependência DB Otimizada
 def get_db():

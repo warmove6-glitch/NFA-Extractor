@@ -21,9 +21,20 @@ const MatrixBackground = () => {
     const columns = canvas.width / fontSize;
     const drops = new Array(Math.floor(columns)).fill(1);
 
-    const draw = () => {
-      ctx.fillStyle = 'rgba(2, 6, 23, 0.1)'; // Fundo semi-transparente para rastro
+    let lastTime = 0;
+    const fps = 20;
+    const interval = 1000 / fps;
+
+    const draw = (currentTime) => {
+      animationFrameId = requestAnimationFrame(draw);
+      
+      const deltaTime = currentTime - lastTime;
+      if (deltaTime < interval) return;
+      lastTime = currentTime - (deltaTime % interval);
+
+      ctx.fillStyle = 'rgba(2, 6, 23, 0.1)'; 
       ctx.fillRect(0, 0, canvas.width, canvas.height);
+
 
       ctx.fillStyle = '#0ea5e9'; // Ciano ORGATEC
       ctx.font = `${fontSize}px monospace`;
@@ -40,12 +51,28 @@ const MatrixBackground = () => {
       animationFrameId = requestAnimationFrame(draw);
     };
 
-    draw();
+    const startAnimation = () => {
+      if (window.requestIdleCallback) {
+        window.requestIdleCallback(() => {
+          animationFrameId = requestAnimationFrame(draw);
+        });
+      } else {
+        animationFrameId = requestAnimationFrame(draw);
+      }
+    };
+
+    if (document.readyState === 'complete') {
+      startAnimation();
+    } else {
+      window.addEventListener('load', startAnimation);
+    }
 
     return () => {
+      window.removeEventListener('load', startAnimation);
       window.removeEventListener('resize', resizeCanvas);
       cancelAnimationFrame(animationFrameId);
     };
+
   }, []);
 
   return (
