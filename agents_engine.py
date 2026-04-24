@@ -1,5 +1,6 @@
 from typing import TypedDict, List, Annotated
 import operator
+import json
 from langgraph.graph import StateGraph, END
 from ai_client import analisar, SYSTEM_SIGMA, SYSTEM_GAMA, SYSTEM_AUDITOR
 from extractor import NFA
@@ -7,6 +8,7 @@ from extractor import NFA
 class AgentState(TypedDict):
     notas: List[NFA]
     nome_contribuinte: str
+    contexto_quant: dict
     analise_sigma: str
     analise_gama: str
     veredito_final: str
@@ -15,27 +17,40 @@ class AgentState(TypedDict):
 def node_sigma(state: AgentState):
     """Agente de Dados e Quantitativo."""
     print("[AGENT] Sigma analisando volumes e impostos...")
-    res = analisar(state['notas'], system_override=SYSTEM_SIGMA, nome_produtor=state['nome_contribuinte'])
+    cq = state['contexto_quant']
+    prompt_contexto = f"""
+GROUND TRUTH MATEMÁTICO (ANTIGRAVITY ENGINE):
+- Score de Risco (Bayesiano): {cq['risk_score']}
+- Nível de Fraude: {cq['fraud_level']}
+- Resumo do Lote: {json.dumps(cq['resumo_estatistico'], indent=2, ensure_ascii=False)}
+"""
+    res = analisar([], system_override=SYSTEM_SIGMA + "\n" + prompt_contexto, nome_produtor=state['nome_contribuinte'])
     return {"analise_sigma": res, "historico": ["Sigma concluiu analise quantitativa."]}
 
 def node_gama(state: AgentState):
     """Agente Juridico e Compliance."""
     print("[AGENT] Gama avaliando riscos juridicos...")
-    # Gama recebe a analise de Sigma para contexto extra
-    contexto = f"CONTEXTO QUANTITATIVO (SIGMA):\n{state['analise_sigma']}"
-    res = analisar(state['notas'], system_override=SYSTEM_GAMA + "\n" + contexto, nome_produtor=state['nome_contribuinte'])
+    cq = state['contexto_quant']
+    contexto = f"CONTEXTO QUANTITATIVO (SIGMA):\n{state['analise_sigma']}\n\nRISCO DETECTADO PELA ENGINE: {cq['fraud_level']} (Score: {cq['risk_score']})"
+    
+    res = analisar([], system_override=SYSTEM_GAMA + "\n" + contexto, nome_produtor=state['nome_contribuinte'])
     return {"analise_gama": res, "historico": ["Gama concluiu parecer juridico."]}
 
 def node_auditor(state: AgentState):
     """Auditor-Chefe Consolidando tudo."""
     print("[AGENT] Auditor-Chefe gerando veredito final...")
+    cq = state['contexto_quant']
     contexto = f"SIGMA (DADOS):\n{state['analise_sigma']}\n\nGAMA (LEGAL):\n{state['analise_gama']}"
-    res = analisar(state['notas'], system_override=SYSTEM_AUDITOR + "\n" + contexto, nome_produtor=state['nome_contribuinte'])
+    from extractor import resumo_geral
+    resumo = resumo_geral(state['notas'])
+    prompt_auditor = f"RESUMO DO LOTE:\n{json.dumps(resumo, indent=2)}\n\n{contexto}"
+    
+    res = analisar(state['notas'][:10], system_override=SYSTEM_AUDITOR + "\n" + prompt_auditor, nome_produtor=state['nome_contribuinte'])
     return {"veredito_final": res, "historico": ["Veredito soberano emitido."]}
+
 
 def build_graph():
     workflow = StateGraph(AgentState)
-    
     workflow.add_node("sigma", node_sigma)
     workflow.add_node("gama", node_gama)
     workflow.add_node("auditor", node_auditor)
@@ -47,14 +62,16 @@ def build_graph():
     
     return workflow.compile()
 
-def rodar_auditoria_completa(notas: List[NFA], nome_contribuinte: str):
+def rodar_auditoria_completa(notas: List[NFA], nome_contribuinte: str, contexto_quant: dict = None):
     app = build_graph()
-    inputs = {
+    initial_state = {
         "notas": notas,
         "nome_contribuinte": nome_contribuinte,
+        "contexto_quant": contexto_quant or {},
         "analise_sigma": "",
         "analise_gama": "",
         "veredito_final": "",
         "historico": []
     }
-    return app.invoke(inputs)
+    return app.invoke(initial_state)
+

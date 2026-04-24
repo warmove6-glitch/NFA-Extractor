@@ -3,7 +3,15 @@ import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, Search, Brain, LogOut, Shield, Send, Loader2 } from 'lucide-react';
 import AuditoriaModule from './AuditoriaModule';
 import MatrixBackground from '../components/MatrixBackground';
+
 import api from '../services/api';
+
+const SuspenseLoader = () => (
+  <div className="flex items-center justify-center p-12">
+    <Loader2 className="animate-spin text-sovereign-cyan" size={40} />
+  </div>
+);
+
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -42,12 +50,15 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto p-12 z-10">
-        <Routes>
-          <Route path="/" element={<HomeModule />} />
-          <Route path="/clientes" element={<ClientesModule />} />
-          <Route path="/auditoria" element={<AuditoriaModule />} />
-          <Route path="/agente" element={<AgenteModule />} />
-        </Routes>
+        <React.Suspense fallback={<SuspenseLoader />}>
+          <Routes>
+            <Route path="/" element={<HomeModule />} />
+            <Route path="/clientes" element={<ClientesModule />} />
+            <Route path="/auditoria" element={<AuditoriaModule />} />
+            <Route path="/agente" element={<AgenteModule />} />
+          </Routes>
+        </React.Suspense>
+
       </main>
     </div>
   );

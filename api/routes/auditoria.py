@@ -27,3 +27,21 @@ async def consultar_status(task_id: str):
     if task_id not in tasks_status:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada")
     return tasks_status[task_id]
+
+@router.get("/download/{task_id}")
+async def baixar_relatorio(task_id: str):
+    import os
+    from fastapi.responses import FileResponse
+    
+    pdf_filename = f"Laudo_{task_id[:8]}.pdf"
+    pdf_path = os.path.join("arquivos_laudos", pdf_filename)
+    
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="Relatório PDF não encontrado. Verifique se a auditoria foi concluída.")
+    
+    return FileResponse(
+        path=pdf_path, 
+        filename=pdf_filename, 
+        media_type='application/pdf'
+    )
+
