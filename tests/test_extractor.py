@@ -11,10 +11,9 @@ import pytest
 # Garante que o diretório raiz do projeto está no path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from extractor import (
+from src.domain.extractor import (
     Parte, Produto, NFA,
-    _moeda, _extrair_parte, _parse_produto,
-    classificar_natureza, resumo_geral, validar_nfa
+    classificar_natureza, resumo_geral
 )
 
 

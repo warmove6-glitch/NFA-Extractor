@@ -2,8 +2,8 @@ from typing import TypedDict, List, Annotated
 import operator
 import json
 from langgraph.graph import StateGraph, END
-from ai_client import analisar, SYSTEM_SIGMA, SYSTEM_GAMA, SYSTEM_AUDITOR
-from extractor import NFA
+from src.infrastructure.ai_client import analisar, SYSTEM_SIGMA, SYSTEM_GAMA, SYSTEM_AUDITOR
+from src.domain.extractor import NFA
 
 class AgentState(TypedDict):
     notas: List[NFA]
@@ -41,7 +41,7 @@ def node_auditor(state: AgentState):
     print("[AGENT] Auditor-Chefe gerando veredito final...")
     cq = state['contexto_quant']
     contexto = f"SIGMA (DADOS):\n{state['analise_sigma']}\n\nGAMA (LEGAL):\n{state['analise_gama']}"
-    from extractor import resumo_geral
+    from src.domain.extractor import resumo_geral
     resumo = resumo_geral(state['notas'])
     prompt_auditor = f"RESUMO DO LOTE:\n{json.dumps(resumo, indent=2)}\n\n{contexto}"
     
