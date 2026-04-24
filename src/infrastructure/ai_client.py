@@ -83,17 +83,21 @@ def _ollama_disponivel() -> bool:
 # ── LOGICA DE LOTE (CHUNKS) ────────────────────────────────────────────────
 
 _PROMPT_SANITIZE = str.maketrans({
-    "\x00": "",   # null byte
-    "\r": " ",    # CR isolado
-    "{{": "{ {", # Jinja-like injection
-    "}}": "} }",
+    "\x00": "",  # null byte
+    "\r": " ",   # CR isolado
 })
 
 def _sanitizar_str(valor: str) -> str:
     """Remove caracteres que podem ser usados para prompt injection."""
     if not isinstance(valor, str):
         return str(valor)
-    return valor.translate(_PROMPT_SANITIZE).strip()
+    return (
+        valor
+        .translate(_PROMPT_SANITIZE)
+        .replace("{{", "{ {")   # Jinja-like injection
+        .replace("}}", "} }")
+        .strip()
+    )
 
 
 def _montar_prompt(notas: list[NFA]) -> str:
@@ -258,27 +262,4 @@ def analisar_pipeline(notas: list[NFA], callback=None, batch_size=15, nome_contr
     # O auditor mestre recebe a regra de ouro via SYSTEM_AUDITOR
     return analisar(notas[:5], callback=callback, system_override=SYSTEM_AUDITOR + "\n" + prompt_final)
 
-def perguntar(notas: list[NFA], context_ia: str, pergunta: str, callback=None, provedor: str = "auto") -> str:
-    """Responde dúvidas pontuais sobre a auditoria usando o contexto já analisado."""
-    pergunta_safe = _sanitizar_str(pergunta)
-    sys_chat = (
-        "Você é o Auditor Assistente da ORGATEC. Responda de forma técnica e direta à dúvida do usuário.\n"
-        "USE O CONTEXTO ABAIXO PARA RESPONDER:\n"
-        f"--- CONTEXTO DA AUDITORIA ---\n{context_ia}\n----------------------------\n"
-        "Se a informação não estiver no contexto, use os dados brutos das notas se necessário."
-    )
-    # BUG FIX: o prompt com a pergunta deve ser passado explicitamente para o motor de análise.
-    # Antes, a variável `prompt` era montada mas nunca usada na chamada de `analisar()`.
-    notas_amostra = notas[:10] if notas else []
-    prompt_base   = _montar_prompt(notas_amostra)
-    prompt_final  = f"{prompt_base}\n\nDÚVIDA DO AUDITOR: {pergunta_safe}"
-
-    api_key = _carregar_env('ANTHROPIC_API_KEY')
-    if api_key and api_key.startswith('sk-ant'):
-        return _analisar_claude(prompt_final, sys_chat, callback)
-
-    api_key_g = _carregar_env('GOOGLE_API_KEY')
-    if api_key_g:
-        return _analisar_gemini(prompt_final, sys_chat, callback)
-
-    return _analisar_ollama(prompt_final, sys_chat, callback)
+def 
