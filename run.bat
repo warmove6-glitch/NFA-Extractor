@@ -1,21 +1,16 @@
 @echo off
 chcp 65001 > nul
-echo Iniciando OrgExtNF...
+echo 🏛️ Iniciando Backend ORGATEC (Sovereign Mode)...
 
-REM Verifica se Python esta instalado
-python --version > nul 2>&1
-if errorlevel 1 (
-    echo ERRO: Python nao encontrado. Instale Python 3.10+ de https://python.org
-    pause
-    exit /b 1
-)
-
-REM Instala dependencias se necessario
-python -c "import customtkinter" > nul 2>&1
-if errorlevel 1 (
-    echo Instalando dependencias...
+REM Verifica se o ambiente virtual existe
+if not exist .venv (
+    echo [!] Ambiente virtual não encontrado. Criando...
+    python -m venv .venv
+    call .venv\Scripts\activate
     pip install -r requirements.txt
+) else (
+    call .venv\Scripts\activate
 )
 
-REM Inicia o app
-python app.py
+echo [>] Iniciando servidor FastAPI na porta 8081...
+python -m uvicorn api.main:app --host 0.0.0.0 --port 8081 --reload
