@@ -1,34 +1,33 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-const LoginPage = lazy(() => import('./pages/LoginPage'));
-import Dashboard from './pages/Dashboard';
-
+const LoginPage   = lazy(() => import('./pages/LoginPage'));
+const Dashboard   = lazy(() => import('./pages/Dashboard'));
 
 const Loader = () => (
-  <div className="h-screen w-screen bg-sovereign-950 flex items-center justify-center">
-    <div className="w-12 h-12 border-4 border-sovereign-cyan border-t-transparent rounded-full animate-spin"></div>
+  <div className="h-screen w-screen bg-bg flex items-center justify-center">
+    <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
   </div>
 );
 
-function App() {
-  const isAuthenticated = !!localStorage.getItem('orgatec_token');
+function PrivateRoute({ children }) {
+  const token = localStorage.getItem('orgatec_token');
+  return token ? children : <Navigate to="/login" replace />;
+}
 
+export default function App() {
   return (
     <Router>
       <Suspense fallback={<Loader />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
-          <Route 
-            path="/dashboard/*" 
-            element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} 
+          <Route
+            path="/dashboard/*"
+            element={<PrivateRoute><Dashboard /></PrivateRoute>}
           />
-          <Route path="/" element={<Navigate to="/dashboard" />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </Suspense>
     </Router>
   );
 }
-
-
-export default App;
