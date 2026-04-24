@@ -155,4 +155,12 @@ def salvar_notas_bd(notas, laudo_texto: str = None) -> tuple[int, int]:
                 db.commit()
                 salvas += 1
             except Exception as e:
-                db.r
+                db.rollback()
+                logger.error(f"Falha ao salvar nota {nfa.chave_acesso}: {e}")
+                
+    return salvas, ignoradas
+
+if __name__ == "__main__":
+    init_db()
+    print("Base de Dados ORGATEC inicializada com suporte a Laudos.")
+

@@ -91,4 +91,5 @@ class TestDatabasePersistence:
         assert salvas == 0
         assert ignoradas == 0
         
- 
+        with TestingSessionLocal() as db:
+            assert db.query(NotaModel).count() == 0
