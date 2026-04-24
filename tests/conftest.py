@@ -8,7 +8,7 @@ import pytest
 # Garante que o diretório raiz do projeto está no path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from extractor import NFA, Parte, Produto
+from src.domain.extractor import NFA, Parte, Produto
 
 
 @pytest.fixture
@@ -91,4 +91,4 @@ def lista_notas_mock(nfa_venda: NFA, nfa_remessa: NFA) -> list[NFA]:
         ),
         produtos=[Produto(quantidade=5.0, vlr_total=12500.0)],
     )
-    return [nfa_venda, nfa_remessa, nfa_venda2]
+    return [nfa_venda, nfa_remessa, n
