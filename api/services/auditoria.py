@@ -1,18 +1,45 @@
 import os
 import tempfile
 import logging
-from typing import List
+import threading
+from typing import Any
 from fastapi import UploadFile
-from extractor import extrair_notas
-from analytics_engine import processar_para_dataframe
-from agents_engine import rodar_auditoria_completa
-from pdf_report import gerar_pdf
+from src.domain.extractor import extrair_notas
+from src.application.analytics_engine import processar_para_dataframe
+from src.domain.agents_engine import rodar_auditoria_completa
+from src.application.reports.pdf_report import gerar_pdf
 from src.infrastructure.database_v2 import SessionLocal, Laudo
 
 logger = logging.getLogger(__name__)
 
-# Mock de progresso (Em produção, usar Redis ou DB)
-tasks_status = {}
+# Armazenamento em memória das tasks ativas.
+# TODO (produção): substituir por Redis ou tabela de tasks no PostgreSQL
+#   para sobreviver a reinicializações e suportar múltiplos workers.
+_tasks_lock: threading.Lock   = threading.Lock()
+_tasks_store: dict[str, Any]  = {}
+
+
+class _ThreadSafeTasksProxy:
+    """Proxy com leitura/escrita atômica sobre o dict de tasks."""
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        with _tasks_lock:
+            _tasks_store[key] = value
+
+    def __getitem__(self, key: str) -> Any:
+        with _tasks_lock:
+            return _tasks_store[key]
+
+    def __contains__(self, key: str) -> bool:
+        with _tasks_lock:
+            return key in _tasks_store
+
+    def get(self, key: str, default: Any = None) -> Any:
+        with _tasks_lock:
+            return _tasks_store.get(key, default)
+
+
+tasks_status: _ThreadSafeTasksProxy = _ThreadSafeTasksProxy()
 
 async def processar_lote_auditoria(task_id: str, files: List[UploadFile], client_name: str, client_cpf: str):
     """
@@ -40,7 +67,7 @@ async def processar_lote_auditoria(task_id: str, files: List[UploadFile], client
         tasks_status[task_id] = {"status": "processamento_quantitativo", "progress": 30}
         
         # Motor Matemático (Ground Truth)
-        from extractor import resumo_geral
+        from src.domain.extractor import resumo_geral
         from src.domain.schemas import AuditoriaMacroSchema
         from src.application.sovereign_engine import AntiGravityQuantEngine
         
@@ -95,22 +122,27 @@ A análise qualitativa da Squad foi omitida para garantir a entrega imediata dos
         # Geração de Relatório PDF (AudiOrg Sovereign)
         tasks_status[task_id] = {"status": "gerando_pdf", "progress": 80}
         pdf_filename = f"Laudo_{task_id[:8]}.pdf"
-        pdf_path = os.path.join("arquivos_laudos", pdf_filename)
-        os.makedirs("arquivos_laudos", exist_ok=True)
+        pdf_path = os.path.join("data", "laudos", pdf_filename)
+        os.makedirs(os.path.join("data", "laudos"), exist_ok=True)
         
         try:
-            from pdf_report import gerar_pdf
+            from src.application.reports.pdf_report import gerar_pdf
             gerar_pdf(
-                notas=all_notas, 
-                saida=pdf_path, 
-                analise_ia=veredito, 
-                nome_contribuinte=client_name, 
-                cpf_contribuinte=client_cpf
+                notas=all_notas,
+                saida=pdf_path,
+                analise_ia=veredito,
+                nome_contribuinte=client_name,
+                cpf_contribuinte=client_cpf,
             )
             logger.info(f"Relatório PDF gerado: {pdf_path}")
         except Exception as e_pdf:
-            logger.error(f"Erro ao gerar PDF: {e_pdf}")
-            # Não falha a auditoria inteira se o PDF falhar, mas loga
+            logger.error(f"Erro crítico ao gerar PDF: {e_pdf}")
+            tasks_status[task_id] = {
+                "status": "erro",
+                "erro": f"Falha na geração do relatório PDF: {e_pdf}",
+                "progress": 80,
+            }
+            return  # Interrompe — não persistir laudo sem relatório
 
         
         # Persistência Soberana (SQUAD ALFA)

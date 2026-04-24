@@ -4,22 +4,35 @@ import { Shield, Lock, Mail } from 'lucide-react';
 import MatrixBackground from '../components/MatrixBackground';
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]   = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      if (email.includes('@orgatec.com.br') || (email === 'admin' && password === 'admin123')) {
-        localStorage.setItem('orgatec_token', 'mock_jwt_token');
+    setErrorMsg('');
+
+    try {
+      // TODO: Substituir por chamada real ao endpoint /auth/login quando implementado.
+      // Autenticação local temporária — APENAS PARA DESENVOLVIMENTO.
+      // Em produção, remover este bloco e usar JWT real via API.
+      const isDev = import.meta.env.DEV;
+      const devEmailOk = isDev && email.toLowerCase().includes('@orgatec.com.br');
+      const devAdminOk = isDev && email === 'admin' && password === 'admin123';
+
+      if (devEmailOk || devAdminOk) {
+        localStorage.setItem('orgatec_token', 'dev_mock_jwt_token');
         window.location.href = '/dashboard';
       } else {
-        alert('Credenciais não autorizadas pelo Protocolo ORGATEC.');
+        setErrorMsg('Credenciais não autorizadas pelo Protocolo ORGATEC.');
       }
+    } catch (err) {
+      setErrorMsg('Erro ao conectar com o servidor. Tente novamente.');
+    } finally {
       setLoading(false);
-    }, 800)
+    }
   };
 
   return (
@@ -84,7 +97,13 @@ const LoginPage = () => {
               </div>
             </div>
 
-            <button 
+            {errorMsg && (
+              <p className="text-red-400 text-xs text-center font-semibold border border-red-800/50 bg-red-900/20 rounded-lg px-3 py-2">
+                {errorMsg}
+              </p>
+            )}
+
+            <button
               type="submit"
               disabled={loading}
               className="w-full bg-sovereign-cyan/20 hover:bg-sovereign-cyan border border-sovereign-cyan/40 text-sovereign-cyan hover:text-white font-black py-3 rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 text-sm"
