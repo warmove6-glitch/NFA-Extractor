@@ -27,7 +27,7 @@ def _carregar_env(chave: str) -> str:
     return os.getenv(chave, '')
 
 # MODELOS 2026 (SQUAD ANTIGRAVITY)
-CLAUDE_MODEL = 'claude-3-5-sonnet-20241022' # Atualizado para Sonnet 3.5
+CLAUDE_MODEL = 'claude-sonnet-4-6'  # Atualizado para Sonnet 4.6 (2026)
 GEMINI_MODEL = 'gemini-flash-latest'       # Nome estável conforme lista de modelos
 
 

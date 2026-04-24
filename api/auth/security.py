@@ -1,7 +1,7 @@
 """
 ORGATEC – Módulo de Segurança JWT
 Responsabilidades:
-  - Hashing de senhas (bcrypt via passlib)
+  - Hashing de senhas (bcrypt direto — sem passlib para evitar bug truncate)
   - Criação e verificação de tokens JWT (python-jose)
   - Dependência FastAPI para extrair o usuário autenticado
 """
@@ -12,12 +12,11 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt as _bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 # ── Configurações ────────────────────────────────────────────────────────────
 SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "TROQUE_EM_PRODUCAO_32_CHARS_MINIMO!")
@@ -25,7 +24,6 @@ ALGORITHM: str = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))  # 8h
 
 # ── Crypto ───────────────────────────────────────────────────────────────────
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
@@ -35,13 +33,18 @@ class TokenData(BaseModel):
     role: str = "user"
 
 
-# ── Funções de senha ─────────────────────────────────────────────────────────
+# ── Funções de senha (bcrypt direto, sem passlib) ────────────────────────────
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    """Gera hash bcrypt sem passar por passlib (evita bug truncate em bcrypt≥4.1)."""
+    return _bcrypt.hashpw(plain.encode("utf-8"), _bcrypt.gensalt(12)).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    """Verifica senha com bcrypt direto. Compatível com hashes gerados por passlib ($2b$)."""
+    try:
+        return _bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    except Exception:
+        return False
 
 
 # ── Funções de token ─────────────────────────────────────────────────────────
