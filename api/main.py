@@ -34,7 +34,8 @@ _raw = os.getenv("ALLOWED_ORIGINS", "")
 ALLOWED_ORIGINS: list[str] = (
     [o.strip() for o in _raw.split(",") if o.strip()]
     if _raw
-    else ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"]
+    else ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000",
+           "http://127.0.0.1:5173", "http://127.0.0.1:5174"]
 )
 
 app.add_middleware(
@@ -62,82 +63,4 @@ def get_db():
         db.close()
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
-class ClientCreate(BaseModel):
-    nome: str = Field(..., min_length=3)
-    cpf_cnpj: str = Field(..., description="CPF ou CNPJ (somente dígitos)")
-
-
-class ChatRequest(BaseModel):
-    pergunta: str
-    contexto: Optional[str] = ""
-
-
-# ── Rotas: Clientes (protegidas por JWT) ──────────────────────────────────────
-router_clientes = APIRouter(prefix="/clientes", tags=["Clientes"])
-
-
-@router_clientes.get("/")
-def listar_clientes(
-    db: Session = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
-):
-    return db.query(Cliente).all()
-
-
-@router_clientes.post("/", status_code=201)
-def criar_cliente(
-    client: ClientCreate,
-    db: Session = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
-):
-    if db.query(Cliente).filter_by(cpf_cnpj=client.cpf_cnpj).first():
-        raise HTTPException(status_code=409, detail="CPF/CNPJ já cadastrado.")
-    novo = Cliente(nome=client.nome, cpf_cnpj=client.cpf_cnpj)
-    db.add(novo)
-    db.commit()
-    db.refresh(novo)
-    return novo
-
-
-@router_clientes.delete("/{client_id}", status_code=204)
-def remover_cliente(
-    client_id: int,
-    db: Session = Depends(get_db),
-    _: TokenData = Depends(get_current_user),
-):
-    cliente = db.query(Cliente).filter_by(id=client_id).first()
-    if not cliente:
-        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
-    db.delete(cliente)
-    db.commit()
-
-
-# ── Rotas: Agente IA (protegidas por JWT) ─────────────────────────────────────
-router_agente = APIRouter(prefix="/agente", tags=["Agente"])
-
-
-@router_agente.post("/chat")
-async def chat_agente(
-    request: ChatRequest,
-    _: TokenData = Depends(get_current_user),
-):
-    from src.infrastructure.ai_client import perguntar
-    try:
-        res = perguntar(notas=[], context_ia=request.contexto, pergunta=request.pergunta)
-        return {"response": res}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
-# ── Registro de routers ───────────────────────────────────────────────────────
-app.include_router(auth_router.router)
-app.include_router(auditoria.router)
-app.include_router(router_clientes)
-app.include_router(router_agente)
-
-
-# ── Health ────────────────────────────────────────────────────────────────────
-@app.get("/ping", tags=["Health"])
-async def ping():
-    return {"status": "ok", "version": "7.0.0"}
+# ── Schemas ────────────────────────────────�
