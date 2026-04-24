@@ -1,28 +1,28 @@
-# 🏛️ OrgAudi — Auditoria Inteligente & BI para NFAs
+# 🏛️ ORGATEC — Auditoria Fiscal Soberana & BI
 
-![Banner](https://img.shields.io/badge/Status-Operational-success?style=for-the-badge&logo=ai&color=059669)
-![Architecture](https://img.shields.io/badge/Architecture-Clean_DDD-blue?style=for-the-badge)
-![Squad](https://img.shields.io/badge/Squad-Antigravity-orange?style=for-the-badge)
+![Banner](https://img.shields.io/badge/Status-Operational-success?style=for-the-badge&logo=ai&color=0ea5e9)
+![Architecture](https://img.shields.io/badge/Architecture-Clean_Architecture-0ea5e9?style=for-the-badge)
+![Framework](https://img.shields.io/badge/Stack-React_19_|_FastAPI-6366f1?style=for-the-badge)
+![Squad](https://img.shields.io/badge/Squad-Antigravity-00D4FF?style=for-the-badge)
 
-**OrgAudi** é o centro de comando para auditoria de Notas Fiscais Avulsas (NFAs). Transformamos o caos de dados tributários em **Inteligência de Negócios** e **Compliance Fiscal** de alta fidelidade, utilizando o estado da arte em IA Generativa.
+**ORGATEC** é uma plataforma de auditoria forense e inteligência tributária projetada para transformar Notas Fiscais Avulsas (NFAs) em laudos técnicos de alta precisão. Utilizando a **Squad Antigravity**, o sistema automatiza a detecção de fraudes e anomalias com rigor matemático e jurídico.
 
 ---
 
-## 💎 Diferenciais Estratégicos
+## 💎 Diferenciais Soberanos
 
-### 🧠 Tríplice Aliança de IA (Orquestração 2026)
-Nosso núcleo de inteligência (`ai_client.py`) opera em uma hierarquia de alta resiliência:
-*   **Claude Sonnet 4 (Top-tier):** O "Auditor Sênior". Redação jurídica impecável e análise profunda de anomalias.
-*   **Google Gemini (Volume):** Janela de contexto massiva para auditoria de lotes com centenas de notas simultâneas.
-*   **Ollama (Privacidade):** Motor local para processamento 100% offline, garantindo sigilo absoluto dos dados da fazenda.
+### 🧠 Orquestração Multi-Agente (LangGraph)
+Diferente de extratores simples, o ORGATEC utiliza uma squad de agentes especializados:
+*   **@Alfa (Arquitetura):** Mantém a integridade sistêmica e Clean Architecture.
+*   **@Sigma (Dados):** Motor quantitativo que roda modelos Bayesianos de risco.
+*   **@Gama (Compliance):** Consultor sênior que emite pareceres baseados na legislação.
+*   **@Delta (QA/SRE):** Garante que nenhum dado saia sem validação tripla (Linter, Security, Type).
 
-### 📊 Business Intelligence Nativo
-- **Análise de Risco HHI:** Cálculo automático do Índice Herfindahl-Hirschman para medir a dependência de compradores.
-- **Detecção de Anomalias:** Algoritmos que sinalizam variações de preço e volume acima dos desvios padrão regionais.
-- **Gráficos Executivos:** Visualização premium em Donut e Séries Temporais com estética Dark Mode.
-
-### 🗄️ Persistência PostgreSQL
-Integração via SQLAlchemy que armazena não apenas os dados das notas, mas o **histórico completo de laudos técnicos**, permitindo auditorias retroativas e monitoramento de tendências ao longo dos anos.
+### 🎨 Interface "Centro de Comando"
+O frontend foi reconstruído em **React 19** com uma estética premium:
+- **Matrix Background:** Imersão visual em operações táticas.
+- **Glassmorphism:** UI moderna com transparências e desfoques.
+- **Dashboard Dinâmico:** Métricas em tempo real extraídas diretamente do banco de dados.
 
 ---
 
@@ -30,61 +30,56 @@ Integração via SQLAlchemy que armazena não apenas os dados das notas, mas o *
 
 | Camada | Tecnologia |
 | :--- | :--- |
-| **Interface** | CustomTkinter (Enterprise Dark Mode) |
-| **Inteligência** | Anthropic Claude API / Google GenAI / Ollama |
-| **Banco de Dados** | PostgreSQL + SQLAlchemy Core |
-| **Relatórios** | ReportLab (PDF c/ Markdown) + OpenPyXL |
-| **Segurança** | Pydantic V2 (Data Validation) |
+| **Frontend** | React 19, Vite, Tailwind CSS 4, Framer Motion |
+| **Backend** | FastAPI, Python 3.12, Pydantic V2 |
+| **Inteligência** | Pydantic AI, LangGraph, Claude 3.5, Gemini 1.5 |
+| **Dados** | SQLAlchemy (Postgres / Fallback SQLite) |
+| **Arquitetura** | Clean Architecture (Domain, Application, Infrastructure) |
 
 ---
 
-## ⚙️ Configuração Rápida
+## ⚙️ Estrutura do Projeto
 
-1.  **Ambiente Virtual:**
-    ```powershell
-    python -m venv .venv
-    .\.venv\Scripts\activate
-    pip install -r requirements.txt
-    ```
+O projeto segue rigorosamente os padrões de **Clean Architecture**:
 
-2.  **Variáveis de Ambiente (`config.env`):**
-    ```env
-    ANTHROPIC_API_KEY=sk-ant-...
-    GOOGLE_API_KEY=AIza...
-    DATABASE_URL=postgresql://postgres:nfa_password@localhost:5432/nfa_extractor
-    ```
-
-3.  **Infraestrutura (Docker):**
-    ```powershell
-    docker-compose up -d
-    ```
+- `api/`: Controladores e rotas FastAPI.
+- `src/domain/`: Regras de negócio, modelos Pydantic e lógica de extração.
+- `src/application/`: Serviços de auditoria, analytics e geradores de relatórios.
+- `src/infrastructure/`: Persistência de dados e clientes de IA.
+- `data/`: Data Lake centralizado contendo bancos de dados, logs e laudos.
+- `frontend/`: Aplicação web moderna em React.
 
 ---
 
-## 📖 Como Operar
+## 🚀 Operação Técnica
 
-### Dashboard Gráfico
-Para a experiência completa de auditoria:
+### 1. Preparação
+Certifique-se de que o PostgreSQL está rodando via Docker:
 ```powershell
-python app.py
+docker-compose up -d
 ```
 
-### Motor de Laudos (CLI)
-Para gerar um relatório consultivo completo instantaneamente:
+### 2. Ativação Fullstack
+Para iniciar simultaneamente o backend e o frontend em modo de desenvolvimento:
 ```powershell
-python gerar_laudo.py
+./run_fullstack.bat
 ```
+*   **API:** `http://localhost:8081`
+*   **APP:** `http://localhost:5173` (ou porta informada pelo Vite)
+
+### 3. Trilha de Auditoria
+O sistema gera logs imutáveis com hashes de integridade em `data/logs/`, garantindo conformidade total com protocolos de segurança.
 
 ---
 
-## 🛡️ SRE & Auditoria do Código
-Qualidade garantida via `pytest`. Nenhuma alteração no parser chega à produção sem passar pela suíte de validação:
+## 🛡️ Qualidade & SRE
+A suíte de testes valida a integridade do parser e da conexão com o banco:
 ```powershell
 pytest tests/ -v
 ```
 
 ---
 
-> [!NOTE]
-> *"Transformando dados fiscais em vantagem competitiva no agronegócio."*  
-> **Gerenciado pela Squad Antigravity (Alfa, Beta, Sigma, Gama, Delta).**
+> [!IMPORTANT]
+> **ORGATEC** opera sob o **Protocolo Soberano**. Toda análise é pautada por evidências puras e matemática irrefutável.
+> **Squad Antigravity — Transformando dados fiscais em vantagem competitiva.**
