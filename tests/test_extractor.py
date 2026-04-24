@@ -310,4 +310,9 @@ class TestValidarNFA:
         assert valida is False
         assert any("zerado" in e for e in erros)
 
-    def test_remessa_zerad
+    def test_remessa_zerada_ok_mas_com_erro_se_nao_houver_produtos(self):
+        # REMESSA com valor zero deve passar na restrição de valor monetário
+        n = NFA(chave_acesso='1'*44, natureza='REMESSA DE TESTE', produtos=[Produto(vlr_total=0, quantidade=10)])
+        valida, erros = validar_nfa(n)
+        assert valida is True
+

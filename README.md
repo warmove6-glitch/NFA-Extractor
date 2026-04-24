@@ -81,4 +81,5 @@ pytest tests/ -v
 ---
 
 > [!IMPORTANT]
-> **
+> **ORGATEC** opera sob o **Protocolo Soberano**. Toda análise é pautada por evidências puras e matemática irrefutável.
+> **Squad Antigravity — Transformando dados fiscais em vantagem competitiva.**

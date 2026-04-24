@@ -343,4 +343,14 @@ def gerar_pdf_auditoria(notas: list[NFA], saida: str, nome_contribuinte: str = "
         ['Indicador', 'Valor Detectado'],
         ['Total de Notas Analisadas', str(res['total_notas'])],
         ['Volume Total (Cabeças)', f"{res['total_cabecas']:.0f}"],
-        ['Faturamento Total', f"R$ {res['total_valor']:,.2f}"
+        ['Faturamento Total', f"R$ {res['total_valor']:,.2f}"],
+        ['Ticket Médio / Animal', f"R$ {res['ticket_medio']:,.2f}"],
+    ]
+    t = Table(data, colWidths=[6*cm, 6*cm])
+    _estilo_tabela(t, len(data))
+    story.append(t)
+    
+    story.append(Spacer(1, 1*cm))
+    story.append(Paragraph("<b>Conclusão do Auditor:</b> Documento gerado via Protocolo Sovereign para fins de compliance fiscal.", normal))
+
+    doc.build(story, onFirstPage=_header_footer, onLaterPages=_header_footer)

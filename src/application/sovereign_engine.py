@@ -59,4 +59,55 @@ class AntiGravityQuantEngine:
         # ── 1. Gap físico: saídas > entradas ─────────────────────────────────
         # Penaliza proporcionalmente ao excedente de cabeças vendidas sobre compradas,
         # normalizado pelo volume de compras (+ 1 para evitar divisão por zero).
-  
+        fator_abismo = max(0, dto.total_cabecas_vendidas - dto.total_cabecas_compradas)
+        gap_ratio    = fator_abismo / (dto.total_cabecas_compradas + 1)
+        gap_penalty  = min(gap_ratio, self.GAP_RATIO_CAP) * self.GAP_WEIGHT
+
+        # ── 2. Inversão de preço compra/venda ────────────────────────────────
+        # Detecta quando o preço de compra supera o de venda em mais de
+        # risk_trigger_ratio — distorção que pode indicar fraude contábil.
+        if dto.avg_preco_compra > 0 and dto.avg_preco_venda > 0:
+            ratio = dto.avg_preco_compra / dto.avg_preco_venda
+            object.__setattr__(dto, 'avg_head_ratio_anomality', ratio)
+
+            if ratio > self.risk_trigger_ratio:
+                # Curva sigmoidal: satura suavemente à medida que a distorção cresce.
+                sigmoid_input   = -(ratio - self.risk_trigger_ratio) * self.PRICE_SIGMOID_SCALE
+                price_mismatch  = 1.0 / (1.0 + np.exp(sigmoid_input))
+                risk_factor    += price_mismatch * self.PRICE_WEIGHT
+
+        # ── Score final ───────────────────────────────────────────────────────
+        score_final = round(min(risk_factor + gap_penalty, self.MAX_SCORE), 4)
+        object.__setattr__(dto, 'score_xgboost_final', score_final)
+
+        # ── Flag de severidade ────────────────────────────────────────────────
+        if score_final >= self.THRESHOLD_SYSTEMIC:
+            object.__setattr__(dto, 'fraud_flag_level', "SYSTEMIC_FRAUD_TRIBUTARY")
+        elif score_final >= self.THRESHOLD_HIGH_ALERT:
+            object.__setattr__(dto, 'fraud_flag_level', "HIGH_ALERT")
+        else:
+            object.__setattr__(dto, 'fraud_flag_level', "NONE")
+
+        return dto
+
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def define_vigilance_cycle(self, risk_score: float, current_stab: float = 1.0) -> tuple[float, datetime]:
+        """
+        Calcula o próximo ciclo de vigilância usando estabilidade FSRS simplificada.
+
+        Args:
+            risk_score:   Score de risco [0.0, MAX_SCORE].
+            current_stab: Estabilidade atual (fator de memória FSRS).
+
+        Returns:
+            (nova_estabilidade, próxima_data_revisão)
+        """
+        if risk_score > self.THRESHOLD_DAILY_WATCH:
+            # Periculosidade crítica → revisão diária obrigatória
+            stab = 0.015
+            next_review = datetime.now() + timedelta(days=1)
+        else:
+            stab        = current_stab * 1.5
+            next_review = datetime.now() + timedelta(days=int(stab * 30))
+        return stab, next_review
