@@ -81,17 +81,4 @@ router_agente = APIRouter(prefix="/agente", tags=["Agente"])
 async def chat_agente(request: ChatRequest):
     from src.infrastructure.ai_client import perguntar
     try:
-        res = perguntar(notas=[], context_ia=request.contexto, pergunta=request.pergunta)
-        return {"response": res}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-app.include_router(auditoria.router)
-app.include_router(router_clientes)
-app.include_router(router_agente)
-
-@app.get("/ping")
-async def ping(): return {"message": "pong"}
-
-@app.get("/")
-def root(): return {"status": "Sovereign Shield Active"}
+        res = perguntar(notas=[], context

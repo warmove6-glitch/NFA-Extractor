@@ -13,4 +13,4 @@ if not exist .venv (
 )
 
 echo [>] Iniciando servidor FastAPI na porta 8081...
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8081 --reload
+python -m uvicorn api.main:app --host 0.0.0.0 --port 80

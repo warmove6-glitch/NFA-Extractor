@@ -98,27 +98,4 @@ const LoginPage = () => {
             </div>
 
             {errorMsg && (
-              <p className="text-red-400 text-xs text-center font-semibold border border-red-800/50 bg-red-900/20 rounded-lg px-3 py-2">
-                {errorMsg}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-sovereign-cyan/20 hover:bg-sovereign-cyan border border-sovereign-cyan/40 text-sovereign-cyan hover:text-white font-black py-3 rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 text-sm"
-            >
-              {loading ? 'AUTENTICANDO...' : 'ACESSAR PORTAL'}
-            </button>
-          </form>
-        </div>
-        
-        <p className="text-center mt-8 text-[9px] text-sovereign-800 tracking-[0.4em] font-bold">
-          ORGATEC SOVEREIGN SHIELD V6.3
-        </p>
-      </motion.div>
-    </div>
-  );
-};
-
-export default LoginPage;
+              <p className="text-red-400 text-xs text-center font-semibold border border-r
