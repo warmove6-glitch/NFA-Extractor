@@ -24,7 +24,7 @@ from reportlab.platypus import (
 )
 
 if TYPE_CHECKING:
-    from extractor import NFA
+    from src.domain.extractor import NFA
 
 # ── Paleta ────────────────────────────────────────────────────────────────────
 AZUL_ESC   = colors.HexColor('#041A2E')
@@ -275,7 +275,7 @@ def _tabela_secao(
 
 def _bloco_cabecalho(notas: list[NFA], ano: str, estilos: dict) -> list:
     """Gera bloco de identificação acima das tabelas."""
-    from extractor import resumo_geral
+    from src.domain.extractor import resumo_geral
     res = resumo_geral(notas)
 
     total_notas  = res['total_notas']
@@ -347,7 +347,7 @@ def gerar_pdf_ir(notas: list[NFA], saida: str) -> None:
         notas: Lista de NFAs extraídas do PDF.
         saida: Caminho do arquivo PDF de destino.
     """
-    from extractor import resumo_geral, classificar_natureza
+    from src.domain.extractor import resumo_geral, classificar_natureza
 
     if not notas:
         raise ValueError('Nenhuma nota fiscal para gerar a Planilha IR.')

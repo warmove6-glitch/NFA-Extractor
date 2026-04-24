@@ -4,11 +4,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from database import Base, NotaModel, ParteModel, ProdutoModel, _get_or_create_parte, salvar_notas_bd
-from extractor import NFA, Parte, Produto
+from src.infrastructure.database_v2 import Base, NotaModel, Cliente as ParteModel, ProdutoModel, _get_or_create_parte, salvar_notas_bd
+from src.domain.extractor import NFA, Parte, Produto
 
 # Mudar o "binding" global do database.py para usar um SQLite na memória durante os testes
-import database
+from src.infrastructure import database_v2 as database
 
 # Inicializa banco SQLite na memória local
 engine = create_engine("sqlite:///:memory:", echo=False)

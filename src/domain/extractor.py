@@ -4,7 +4,7 @@ import logging
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
-from constants import REGEX
+from .constants import REGEX
 
 logger = logging.getLogger('NFA_Extractor')
 

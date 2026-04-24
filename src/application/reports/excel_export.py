@@ -12,10 +12,10 @@ import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from constants import CABECALHOS_EXCEL, CORES, LARGURAS_EXCEL
+from src.domain.constants import CABECALHOS_EXCEL, CORES, LARGURAS_EXCEL
 
 if TYPE_CHECKING:
-    from extractor import NFA
+    from src.domain.extractor import NFA
 
 
 def _cel_style(
@@ -160,7 +160,7 @@ def _aba_destinatarios(wb, notas: list[NFA]) -> None:
 
 def _aba_mensal(wb, notas: list[NFA], nome_contribuinte: str = "") -> None:
     """Aba 4 — Evolução mensal do faturamento."""
-    from extractor import resumo_geral
+    from src.domain.extractor import resumo_geral
 
     ws = wb.create_sheet('Evolução Mensal')
     _configurar_aba(ws)
