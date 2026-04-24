@@ -138,36 +138,4 @@ A análise qualitativa da Squad foi omitida para garantir a entrega imediata dos
         except Exception as e_pdf:
             logger.error(f"Erro crítico ao gerar PDF: {e_pdf}")
             tasks_status[task_id] = {
-                "status": "erro",
-                "erro": f"Falha na geração do relatório PDF: {e_pdf}",
-                "progress": 80,
-            }
-            return  # Interrompe — não persistir laudo sem relatório
-
-        
-        # Persistência Soberana (SQUAD ALFA)
-        novo_laudo = Laudo(
-            cliente_id=1, # Mock para o cliente de teste
-            veredito_ia=veredito,
-            qtd_notas=len(all_notas),
-            valor_total=valor_total_lote,
-            qtd_anomalias=veredito.count("ANOMALIA") if "ANOMALIA" in veredito else 0,
-            pdf_path=pdf_path
-        )
-        db.add(novo_laudo)
-        db.commit()
-        
-        tasks_status[task_id] = {
-            "status": "concluido", 
-            "progress": 100, 
-            "resultado": veredito,
-            "total_notas": len(all_notas)
-        }
-
-        
-    except Exception as e:
-        logger.error(f"Erro no processamento da auditoria {task_id}: {e}")
-        tasks_status[task_id] = {"status": "erro", "erro": str(e)}
-    finally:
-        db.close()
-
+    
