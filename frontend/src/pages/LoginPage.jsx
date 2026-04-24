@@ -1,124 +1,112 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Shield, Lock, Mail } from 'lucide-react';
-import MatrixBackground from '../components/MatrixBackground';
+import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
 
-const LoginPage = () => {
+export default function LoginPage() {
+  const navigate = useNavigate();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading]   = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [error, setError]       = useState('');
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setErrorMsg('');
+    setError('');
 
     try {
-      // TODO: Substituir por chamada real ao endpoint /auth/login quando implementado.
-      // Autenticação local temporária — APENAS PARA DESENVOLVIMENTO.
-      // Em produção, remover este bloco e usar JWT real via API.
-      const isDev = import.meta.env.DEV;
-      const devEmailOk = isDev && email.toLowerCase().includes('@orgatec.com.br');
-      const devAdminOk = isDev && email === 'admin' && password === 'admin123';
+      // OAuth2PasswordRequestForm exige form-data com campo "username"
+      const form = new URLSearchParams();
+      form.append('username', email);
+      form.append('password', password);
 
-      if (devEmailOk || devAdminOk) {
-        localStorage.setItem('orgatec_token', 'dev_mock_jwt_token');
-        window.location.href = '/dashboard';
-      } else {
-        setErrorMsg('Credenciais não autorizadas pelo Protocolo ORGATEC.');
-      }
+      const res = await api.post('/auth/login', form, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      });
+
+      localStorage.setItem('orgatec_token', res.data.access_token);
+      localStorage.setItem('orgatec_user', JSON.stringify(res.data.user));
+      navigate('/dashboard');
     } catch (err) {
-      setErrorMsg('Erro ao conectar com o servidor. Tente novamente.');
+      setError(err.response?.data?.detail || 'Falha ao conectar com o servidor.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-sovereign-950 relative overflow-hidden">
-      <MatrixBackground />
-      
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full relative z-10"
-      >
-        <div className="text-center mb-6">
-          {/* Imagem Estratégica Reduzida (Diretriz do Usuário) */}
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="mb-4 overflow-hidden rounded-xl border border-sovereign-800 shadow-2xl max-w-[240px] mx-auto"
-          >
-            <img 
-              src="/orgatecIA.jpg" 
-              alt="ORGATEC AI" 
-              className="w-full h-auto object-cover grayscale hover:grayscale-0 transition-all duration-700"
-            />
-          </motion.div>
+    <div className="min-h-screen bg-bg flex items-center justify-center px-4">
+      <div className="w-full max-w-sm">
 
-          <div className="flex justify-center items-center gap-3 mb-1">
-            <Shield size={24} className="text-sovereign-cyan" />
-            <h1 className="text-3xl font-black tracking-tighter">ORGATEC</h1>
+        {/* Logo / Header */}
+        <div className="mb-8 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-brand-600 rounded-xl mb-4">
+            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+            </svg>
           </div>
-          <p className="text-sovereign-600 font-bold tracking-[0.2em] text-[10px]">SOVEREIGN AUDIT SYSTEM</p>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">ORGATEC</h1>
+          <p className="text-sm text-slate-500 mt-1">Sistema de Auditoria Fiscal</p>
         </div>
 
-        <div className="sovereign-card p-8 bg-sovereign-950/80 backdrop-blur-md">
-          <form onSubmit={handleLogin} className="space-y-5">
+        {/* Card */}
+        <div className="card p-6">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-[10px] font-bold text-sovereign-500 mb-2 tracking-widest uppercase">E-mail Corporativo</label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-3 text-sovereign-700" size={16} />
-                <input 
-                  type="text"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-transparent border border-sovereign-800 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-sovereign-cyan transition-all outline-none text-sm"
-                  placeholder="exemplo@orgatec.com.br"
-                  required
-                />
-              </div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                E-mail
+              </label>
+              <input
+                type="email"
+                className="input"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-sovereign-500 mb-2 tracking-widest uppercase">Senha</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 text-sovereign-700" size={16} />
-                <input 
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-transparent border border-sovereign-800 rounded-lg py-2.5 pl-10 pr-4 text-white focus:border-sovereign-cyan transition-all outline-none text-sm"
-                  placeholder="••••••••"
-                  required
-                />
-              </div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5 uppercase tracking-wide">
+                Senha
+              </label>
+              <input
+                type="password"
+                className="input"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
             </div>
 
-            {errorMsg && (
-              <p className="text-red-400 text-xs text-center font-semibold border border-red-800/50 bg-red-900/20 rounded-lg px-3 py-2">
-                {errorMsg}
-              </p>
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">
+                {error}
+              </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-sovereign-cyan/20 hover:bg-sovereign-cyan border border-sovereign-cyan/40 text-sovereign-cyan hover:text-white font-black py-3 rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 text-sm"
-            >
-              {loading ? 'AUTENTICANDO...' : 'ACESSAR PORTAL'}
+            <button type="submit" className="btn-primary w-full py-2.5" disabled={loading}>
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Entrando...
+                </span>
+              ) : 'Entrar'}
             </button>
           </form>
+
+          <p className="text-center text-xs text-slate-400 mt-4">
+            Primeiro acesso? Use <code className="bg-subtle px-1 py-0.5 rounded">POST /auth/seed</code> para criar o admin.
+          </p>
         </div>
-        
-        <p className="text-center mt-8 text-[9px] text-sovereign-800 tracking-[0.4em] font-bold">
-          ORGATEC SOVEREIGN SHIELD V6.3
+
+        <p className="text-center text-xs text-slate-400 mt-6">
+          ORGATEC Sovereign Audit · v7.0
         </p>
-      </motion.div>
+      </div>
     </div>
   );
-};
-
-export default LoginPage;
+}

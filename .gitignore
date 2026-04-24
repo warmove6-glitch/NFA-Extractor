@@ -48,3 +48,15 @@ tmp/
 
 
 
+
+# Credenciais e config local
+config.env
+
+# Outputs gerados (relatórios, laudos, extrações)
+relatorios/
+data/laudos/
+*.xlsx
+!src/**/*.xlsx
+
+# Logs
+extractor.log
