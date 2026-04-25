@@ -288,8 +288,9 @@ function AgenteModule() {
     try {
       const res = await api.post('/agente/chat', { pergunta: text });
       setMsgs(m => [...m, { role: 'assistant', content: res.data.response }]);
-    } catch {
-      setMsgs(m => [...m, { role: 'assistant', content: 'Erro ao conectar com o agente.' }]);
+    } catch (err) {
+      const detail = err.response?.data?.detail || err.message || 'Erro desconhecido';
+      setMsgs(m => [...m, { role: 'assistant', content: `⚠️ Erro: ${detail}` }]);
     } finally { setLoading(false); }
   };
 

@@ -261,5 +261,3 @@ def analisar_pipeline(notas: list[NFA], callback=None, batch_size=15, nome_contr
     
     # O auditor mestre recebe a regra de ouro via SYSTEM_AUDITOR
     return analisar(notas[:5], callback=callback, system_override=SYSTEM_AUDITOR + "\n" + prompt_final)
-
-def 

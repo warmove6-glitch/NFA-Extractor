@@ -1,8 +1,14 @@
-# Baseline local-only ignores
+# ================================================================================
+# NFA Extractor - .gitignore
+# ================================================================================
+
+# ─── Segredos e credenciais ────────────────────────────────────────────────────
 .env
 .env.*
+.env.local
 !.env.example
 !.env.*.example
+config.env
 *.pem
 *.key
 *.p12
@@ -10,7 +16,7 @@
 credentials.json
 id_rsa
 
-# Python
+# ─── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -20,21 +26,22 @@ __pycache__/
 venv/
 env/
 
-# Node
+# ─── Node / Frontend ───────────────────────────────────────────────────────────
 node_modules/
 .next/
 dist/
 build/
 coverage/
+frontend/.vite/
 
-# Editor and local tooling
+# ─── Editores / IDEs ───────────────────────────────────────────────────────────
 .idea/
 .vscode/
 .cursor/
 .claude/
 .uix/
 
-# Local artifacts
+# ─── Artefatos locais ──────────────────────────────────────────────────────────
 *.db
 *.sqlite
 *.sqlite3
@@ -44,19 +51,13 @@ coverage/
 tmp/
 .cache/
 
-
-
-
-
-
-# Credenciais e config local
-config.env
-
-# Outputs gerados (relatórios, laudos, extrações)
+# ─── Outputs gerados ───────────────────────────────────────────────────────────
 relatorios/
 data/laudos/
 *.xlsx
 !src/**/*.xlsx
-
-# Logs
 extractor.log
+
+# ─── OS ────────────────────────────────────────────────────────────────────────
+Thumbs.db
+.DS_Store

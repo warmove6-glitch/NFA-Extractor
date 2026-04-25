@@ -45,4 +45,58 @@
   .input {
     @apply w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm
            text-slate-800 placeholder-slate-400
-           outline-none tra
+           outline-none transition-all duration-150
+           focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  }
+
+  /* Botão primário */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2
+           bg-brand-600 hover:bg-brand-700 active:bg-brand-700
+           text-white text-sm font-semibold
+           px-4 py-2 rounded-lg
+           transition-colors duration-150
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Botão secundário */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2
+           bg-surface hover:bg-subtle active:bg-subtle
+           text-slate-700 text-sm font-semibold
+           border border-border
+           px-4 py-2 rounded-lg
+           transition-colors duration-150
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* Badge */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .badge-blue    { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700; }
+  .badge-green   { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700; }
+  .badge-red     { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700; }
+  .badge-yellow  { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700; }
+
+  /* Nav item sidebar */
+  .nav-item {
+    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
+           text-slate-600 hover:bg-subtle hover:text-slate-900
+           transition-colors duration-100 cursor-pointer;
+  }
+  .nav-item.active {
+    @apply bg-brand-50 text-brand-700 font-semibold;
+  }
+
+  /* Separador */
+  .divider {
+    @apply border-t border-border my-4;
+  }
+}
+
+/* Scrollbar sutil */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-slate-300; }

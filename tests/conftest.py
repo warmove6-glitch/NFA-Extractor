@@ -91,4 +91,4 @@ def lista_notas_mock(nfa_venda: NFA, nfa_remessa: NFA) -> list[NFA]:
         ),
         produtos=[Produto(quantidade=5.0, vlr_total=12500.0)],
     )
-    return [nfa_venda, nfa_remessa, n
+    return [nfa_venda, nfa_remessa, nfa_venda2]

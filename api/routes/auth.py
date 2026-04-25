@@ -46,6 +46,10 @@ def get_db():
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+import logging as _logging
+_log = _logging.getLogger("uvicorn")
+
+
 @router.post("/login", response_model=TokenResponse)
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """
@@ -54,7 +58,20 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     """
     user = db.query(User).filter(User.email == form.username).first()
 
-    if not user or not verify_password(form.password, user.hashed_password):
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="E-mail ou senha incorretos.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        pwd_ok = verify_password(form.password, user.hashed_password)
+    except Exception as exc:
+        _log.error(f"❌ verify_password falhou para {form.username}: {type(exc).__name__}: {exc}")
+        raise HTTPException(status_code=500, detail=f"Erro interno na verificação de senha: {type(exc).__name__}: {exc}")
+
+    if not pwd_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="E-mail ou senha incorretos.",

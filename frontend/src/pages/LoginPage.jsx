@@ -99,7 +99,7 @@ export default function LoginPage() {
           </form>
 
           <p className="text-center text-xs text-slate-400 mt-4">
-            Primeiro acesso? Use <code className="bg-subtle px-1 py-0.5 rounded">POST /auth/seed</code> para criar o admin.
+            Admin padrão: <code className="bg-subtle px-1 py-0.5 rounded">admin@orgatec.com.br</code>
           </p>
         </div>
 
