@@ -21,13 +21,13 @@ if not exist "config.env" (
 
 REM ── Backend ─────────────────────────────────────────────────────────────────
 echo [1/2] Iniciando Backend (FastAPI :8081)...
-start "ORGATEC Backend" cmd /k ".venv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port 8081 --reload"
+start "ORGATEC Backend" /d "%~dp0\.." cmd /k ".venv\Scripts\python.exe -m uvicorn api.main:app --host 127.0.0.1 --port 8081 --reload"
 
 timeout /t 3 /nobreak > nul
 
 REM ── Frontend ────────────────────────────────────────────────────────────────
 echo [2/2] Iniciando Frontend (Vite :5173)...
-start "ORGATEC Frontend" cmd /k "cd frontend && npm run dev"
+start "ORGATEC Frontend" /d "%~dp0\..\frontend" cmd /k "npm run dev"
 
 echo.
 echo ================================================================
