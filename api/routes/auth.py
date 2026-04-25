@@ -116,4 +116,4 @@ def seed_admin(db: Session = Depends(get_db)):
     )
     db.add(admin)
     db.commit()
-    return {"detail": "Usuário admin criado.", "email": "admin@orgatec.com.br", "senha": "Admin@2024!"}
+    return {"detail": "Usuário admin criado.", "email": "admin@orgatec.com.br"}
