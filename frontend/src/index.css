@@ -1,102 +1,184 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700;800&display=swap');
 
 @theme {
-  /* Paleta clean profissional */
-  --color-brand-50:  #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
+  /* ── Paleta corporativa navy/blue ── */
+  --color-navy-950: #020617;
+  --color-navy-900: #0f172a;
+  --color-navy-800: #1e293b;
+  --color-navy-700: #334155;
+  --color-navy-600: #475569;
+  --color-navy-500: #64748b;
+  --color-navy-400: #94a3b8;
+  --color-navy-300: #cbd5e1;
+  --color-navy-200: #e2e8f0;
+  --color-navy-100: #f1f5f9;
+  --color-navy-50:  #f8fafc;
 
+  --color-accent-700: #0c4a6e;
+  --color-accent-600: #0369a1;
+  --color-accent-500: #0284c7;
+  --color-accent-400: #38bdf8;
+  --color-accent-100: #e0f2fe;
+  --color-accent-50:  #f0f9ff;
+
+  /* Alias semântico */
   --color-surface:   #ffffff;
   --color-bg:        #f8fafc;
   --color-border:    #e2e8f0;
   --color-muted:     #64748b;
   --color-subtle:    #f1f5f9;
 
-  --color-success:   #10b981;
-  --color-warning:   #f59e0b;
-  --color-danger:    #ef4444;
+  /* Brand = accent */
+  --color-brand-50:  #f0f9ff;
+  --color-brand-100: #e0f2fe;
+  --color-brand-500: #0284c7;
+  --color-brand-600: #0369a1;
+  --color-brand-700: #0c4a6e;
+
+  --color-success:  #10b981;
+  --color-warning:  #f59e0b;
+  --color-danger:   #ef4444;
 }
 
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
-
-  html { font-size: 16px; }
+  html { font-size: 16px; scroll-behavior: smooth; }
 
   body {
-    @apply bg-bg text-slate-800 antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    @apply bg-bg text-navy-900 antialiased;
+    font-family: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.6;
   }
 
-  input, button, select, textarea {
-    font-family: inherit;
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Poppins', 'Open Sans', sans-serif;
+    font-weight: 600;
+    line-height: 1.25;
   }
+
+  input, button, select, textarea { font-family: inherit; }
 }
 
 @layer components {
-  /* Card base */
+  /* ── Card ── */
   .card {
     @apply bg-surface border border-border rounded-xl shadow-sm;
   }
-
-  /* Input base */
-  .input {
-    @apply w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm
-           text-slate-800 placeholder-slate-400
-           outline-none transition-all duration-150
-           focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  .card-hover {
+    @apply bg-surface border border-border rounded-xl shadow-sm transition-all duration-200;
+    &:hover { @apply shadow-md; border-color: var(--color-accent-200); }
   }
 
-  /* Botão primário */
+  /* ── Input ── */
+  .input {
+    @apply w-full bg-surface border border-border rounded-lg px-3 py-2.5 text-sm
+           text-navy-900 placeholder-navy-400
+           outline-none transition-all duration-150
+           focus:border-accent-500 focus:ring-2 focus:ring-accent-100;
+  }
+  .input-search {
+    @apply w-full bg-navy-50 border border-border rounded-lg pl-9 pr-3 py-2 text-sm
+           text-navy-800 placeholder-navy-400
+           outline-none transition-all duration-150
+           focus:border-accent-500 focus:ring-2 focus:ring-accent-100 focus:bg-white;
+  }
+
+  /* ── Botões ── */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
-           bg-brand-600 hover:bg-brand-700 active:bg-brand-700
+           bg-accent-600 hover:bg-accent-700 active:scale-95
            text-white text-sm font-semibold
-           px-4 py-2 rounded-lg
-           transition-colors duration-150
-           disabled:opacity-50 disabled:cursor-not-allowed;
+           px-4 py-2.5 rounded-lg
+           transition-all duration-150 cursor-pointer
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
   }
-
-  /* Botão secundário */
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2
-           bg-surface hover:bg-subtle active:bg-subtle
-           text-slate-700 text-sm font-semibold
+           bg-surface hover:bg-subtle active:scale-95
+           text-navy-700 text-sm font-semibold
            border border-border
-           px-4 py-2 rounded-lg
-           transition-colors duration-150
+           px-4 py-2.5 rounded-lg
+           transition-all duration-150 cursor-pointer
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
-
-  /* Badge */
-  .badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2
+           text-navy-600 hover:bg-subtle hover:text-navy-900 active:scale-95
+           text-sm font-medium px-3 py-2 rounded-lg
+           transition-all duration-150 cursor-pointer;
   }
-  .badge-blue    { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-brand-50 text-brand-700; }
-  .badge-green   { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700; }
-  .badge-red     { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700; }
-  .badge-yellow  { @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700; }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2
+           bg-red-50 hover:bg-red-100 active:scale-95
+           text-red-700 text-sm font-semibold border border-red-200
+           px-4 py-2.5 rounded-lg
+           transition-all duration-150 cursor-pointer;
+  }
 
-  /* Nav item sidebar */
+  /* ── Badges ── */
+  .badge        { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold; }
+  .badge-blue   { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-accent-50 text-accent-700 border border-accent-100; }
+  .badge-green  { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100; }
+  .badge-red    { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-100; }
+  .badge-yellow { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100; }
+  .badge-gray   { @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-navy-100 text-navy-600 border border-navy-200; }
+
+  /* ── Nav Sidebar ── */
   .nav-item {
-    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium
-           text-slate-600 hover:bg-subtle hover:text-slate-900
-           transition-colors duration-100 cursor-pointer;
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
+           text-navy-400 hover:bg-navy-800 hover:text-white
+           transition-all duration-100 cursor-pointer whitespace-nowrap;
   }
   .nav-item.active {
-    @apply bg-brand-50 text-brand-700 font-semibold;
+    @apply bg-accent-600 text-white shadow-sm;
+  }
+  .nav-section {
+    @apply text-xs font-semibold text-navy-500 uppercase tracking-widest px-3 mb-1 mt-4;
   }
 
-  /* Separador */
-  .divider {
-    @apply border-t border-border my-4;
+  /* ── KPI Card ── */
+  .kpi-card {
+    @apply bg-surface border border-border rounded-xl shadow-sm p-5 flex flex-col gap-3 transition-shadow duration-200;
+    &:hover { @apply shadow-md; }
   }
+
+  /* ── Tabela ── */
+  .table-th {
+    @apply text-left text-xs font-semibold text-navy-500 uppercase tracking-wider
+           px-4 py-3 bg-navy-50 border-b border-border;
+  }
+  .table-td {
+    @apply px-4 py-3.5 text-sm text-navy-700 border-b border-border;
+  }
+  .table-row {
+    @apply hover:bg-navy-50 transition-colors duration-100;
+  }
+
+  /* ── Topbar ── */
+  .topbar {
+    @apply h-14 bg-surface border-b border-border flex items-center gap-4 px-6 shrink-0;
+  }
+
+  /* ── Divider ── */
+  .divider { @apply border-t border-navy-800 my-2; }
 }
 
-/* Scrollbar sutil */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+/* ── Scrollbar sutil ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
-::-webkit-scrollbar-thumb:hover { @apply bg-slate-300; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* ── Animações ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 200ms ease-out both; }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in { animation: slideIn 200ms ease-out both; }

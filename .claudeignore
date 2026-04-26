@@ -1,0 +1,27 @@
+# Ambientes virtuais e dependências
+.venv/
+venv/
+env/
+node_modules/
+
+# Cache e compilados
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Dados e bancos locais
+*.db
+*.db-shm
+*.db-wal
+data/raw/
+data/processed/
+
+# Logs
+logs/
+*.log
