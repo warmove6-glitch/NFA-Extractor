@@ -148,16 +148,63 @@ async def processar_lote_auditoria(
             """Atualizar progresso em tempo real durante análise."""
             logger.info(f"[IA] {texto}")
 
-        logger.info(f"[PRODUCAO] Iniciando Claude Vision para {client_name}")
+        logger.info(f"[PRODUCAO] Iniciando análise para {client_name}")
         t_claude_start = time.time()
-        veredito = analisar_producao(
-            all_notas,
-            callback=callback_progresso,
-            nome_produtor=client_name
-        )
+
+        # Timeout adaptativo: máximo 8 segundos para análise
+        # Se passar disso, usa modo rápido sem IA
+        import threading
+        resultado_ia = {'veredito': None, 'concluido': False}
+
+        def executar_analise():
+            try:
+                resultado_ia['veredito'] = analisar_producao(
+                    all_notas,
+                    callback=callback_progresso,
+                    nome_produtor=client_name
+                )
+            except Exception as e:
+                logger.warning(f"Análise IA falhou: {e}")
+                resultado_ia['veredito'] = None
+            finally:
+                resultado_ia['concluido'] = True
+
+        thread_ia = threading.Thread(target=executar_analise, daemon=True)
+        thread_ia.start()
+        thread_ia.join(timeout=8)  # Espera máximo 8s
+
         t_claude = time.time() - t_claude_start
-        logger.info(f"⏱️  [CLAUDE TOTAL] {t_claude:.1f}s")
-        _log_tempo("CLAUDE ANALYSIS")
+
+        if resultado_ia['veredito']:
+            veredito = resultado_ia['veredito']
+            logger.info(f"⏱️  [IA COMPLETA] {t_claude:.1f}s")
+        else:
+            # Modo fallback: análise rápida baseada em KPIs
+            # Extrai período das notas
+            periodo_str = "N/D"
+            if all_notas:
+                datas = [n.emissao for n in all_notas if n.emissao]
+                if datas:
+                    datas_sorted = sorted(datas)
+                    periodo_str = f"{datas_sorted[0]} a {datas_sorted[-1]}"
+
+            veredito = f"""[VEREDITO RÁPIDO - Modo Otimizado]
+
+Contribuinte: {client_name}
+Período: {periodo_str}
+Notas: {len(all_notas)}
+Valor Total: R$ {valor_total_lote:,.2f}
+
+ANÁLISE AUTOMÁTICA (SEM IA):
+- {len(all_notas)} documentos processados
+- Valor agregado: R$ {valor_total_lote:,.2f}
+- Status: Processamento concluído em modo rápido
+
+Nota: Análise detalhada indisponível (timeout). Recomenda-se reprocessamento para análise completa.
+"""
+            logger.info(f"⏱️  [FALLBACK RÁPIDO] {t_claude:.1f}s (sem IA)")
+
+        _log_tempo("ANÁLISE CONCLUÍDA")
 
         # Geracao de Relatorio PDF (AudiOrg Sovereign)
         tasks_status[task_id] = {"status": "gerando_pdf", "progress": 80}
