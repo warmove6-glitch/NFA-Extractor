@@ -32,8 +32,6 @@ CLAUDE_MODEL = 'claude-sonnet-4-6'
 SWIFT_URL    = 'http://localhost:8000/v1'
 SWIFT_MODEL  = 'Qwen/Qwen2.5-7B-Instruct'  # Substituível via SWIFT_MODEL no config.env
 
-OLLAMA_URL   = 'http://localhost:11434'
-OLLAMA_MODEL = 'llama3.1:8b'
 
 
 # ── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
@@ -58,12 +56,6 @@ def _openai_disponivel() -> bool:
 def _gemini_disponivel() -> bool:
     return bool(_carregar_env('GOOGLE_API_KEY'))
 
-def _ollama_disponivel() -> bool:
-    try:
-        res = requests.get(f"{OLLAMA_URL}/api/tags", timeout=1)
-        return res.status_code == 200
-    except:
-        return False
 
 def _swift_disponivel() -> bool:
     url = _carregar_env('SWIFT_URL') or SWIFT_URL
@@ -231,28 +223,6 @@ Retorne em JSON estruturado.
         return {"status": "erro", "mensagem": f"Erro: {e}"}
 
 
-def _analisar_ollama(prompt: str, sys: str, callback=None) -> str:
-    """Motor Local com Streaming para evitar hangs."""
-    try:
-        response = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": f"System: {sys}\nUser: {prompt}", "stream": True},
-            stream=True,
-            timeout=8,
-        )
-        full_text = ""
-        for line in response.iter_lines():
-            if line:
-                chunk = json.loads(line.decode('utf-8'))
-                token = chunk.get("response", "")
-                full_text += token
-                if callback: callback(token)
-                if chunk.get("done"): break
-        return full_text
-    except Exception as e:
-        return f"[Ollama Erro: {e}]"
-
-
 def _analisar_swift(prompt: str, sys: str, callback=None) -> str:
     """Motor local ms-swift — API compatível com OpenAI (swift deploy)."""
     try:
@@ -287,36 +257,6 @@ def _analisar_swift(prompt: str, sys: str, callback=None) -> str:
         return f"[Swift Falhou: {e}]"
 
 
-def _analisar_local_kb(pergunta: str, callback=None) -> str:
-    """
-    Motor de Conhecimento Local — alternativa offline ao Ollama.
-
-    Usa a base de conhecimento fiscal ORGATEC (local_kb.py) para responder
-    perguntas sobre NFA, ICMS, FUNRURAL, CTN, LC 87/96, EC 132/23, GTA, etc.
-
-    Vantagens:
-    - Zero dependência de servidor externo
-    - Resposta instantânea (< 5ms)
-    - Sem alucinações — apenas conteúdo pré-validado
-    """
-    from src.infrastructure.local_kb import responder as kb_responder
-    try:
-        resposta = kb_responder(pergunta)
-        if callback:
-            callback(resposta)
-        return resposta
-    except Exception as e:
-        logger.error(f"KB Local: erro inesperado — {e}")
-        return f"[KB Local Erro: {e}]"
-
-
-def _local_kb_disponivel() -> bool:
-    """Sempre disponível (sem dependências externas)."""
-    try:
-        from src.infrastructure.local_kb import KB
-        return len(KB) > 0
-    except Exception:
-        return False
 
 # ── ORQUESTRADOR RESILIENTE ────────────────────────────────────────────────
 
@@ -324,14 +264,13 @@ def _local_kb_disponivel() -> bool:
 def analisar_producao(notas: list[NFA], callback=None, system_override: str = None,
                      nome_produtor: str = "") -> str:
     """
-    Modo PRODUÇÃO (2026): Claude com fallback rápido.
+    Modo PRODUÇÃO (2026): Claude com fallback Swift.
 
-    Hierarquia OTIMIZADA:
-    1. Claude Vision/Text (15s timeout) — qualidade máxima
-    2. Swift (10s timeout) — fallback local rápido
-    3. KB Local (instantâneo) — contingência final
+    Hierarquia:
+    1. Claude (15s timeout) — qualidade máxima
+    2. Swift local (10s timeout) — fallback rápido
 
-    Nota: Ollama removido do fluxo (muito lento em produção).
+    Nota: KB Local e Ollama removidos para foco em motores especializados.
     """
     import threading
     import time
@@ -391,9 +330,9 @@ def analisar_producao(notas: list[NFA], callback=None, system_override: str = No
             if "[Swift" not in res:
                 return res
 
-    # 3. KB LOCAL (CONTINGÊNCIA FINAL) — instantâneo
-    if callback: callback("[KB] Base de Conhecimento Local (instantâneo)...\n")
-    return _analisar_local_kb(prompt, callback)
+    # Se ambos falharem, retornar aviso
+    logger.error("Análise falhou: Claude e Swift indisponíveis.")
+    return "[ERRO] Análise indisponível: Claude e Swift não responderam."
 
 # ── PIPELINE EM LOTES (TURBO) ──────────────────────────────────────────────
 

@@ -105,26 +105,3 @@ class TestAnalisarProducao:
             assert 'Análise Swift OK' in resultado
             mock_swift.assert_called_once()
 
-    def test_analisar_producao_fallback_chain(self, notas_teste):
-        """Testa cadeia de fallbacks: Claude → Swift → KB (Ollama removido de produção)."""
-        with patch('src.infrastructure.ai_client._carregar_env', return_value=''), \
-             patch('src.infrastructure.ai_client._swift_disponivel', return_value=False), \
-             patch('src.infrastructure.ai_client._analisar_local_kb', return_value='Resposta KB Local') as mock_kb:
-
-            resultado = analisar_producao(notas_teste)
-
-            # Quando Claude e Swift não estão disponíveis, vai direto para KB
-            assert 'Resposta KB Local' in resultado
-            mock_kb.assert_called_once()
-
-    def test_analisar_producao_contingencia_kb(self, notas_teste):
-        """Quando todos motores falham, retorna KB Local."""
-        with patch('src.infrastructure.ai_client._carregar_env', return_value=''), \
-             patch('src.infrastructure.ai_client._swift_disponivel', return_value=False), \
-             patch('src.infrastructure.ai_client._ollama_disponivel', return_value=False), \
-             patch('src.infrastructure.ai_client._analisar_local_kb', return_value='Resposta KB') as mock_kb:
-
-            resultado = analisar_producao(notas_teste)
-
-            assert 'Resposta KB' in resultado
-            mock_kb.assert_called_once()

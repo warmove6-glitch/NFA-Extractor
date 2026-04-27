@@ -297,27 +297,3 @@ class TestResponder:
         """Palavras-chave centrais devem sempre retornar resposta não vazia."""
         resultado = responder(pergunta)
         assert resultado.strip() != ""
-
-
-# ── integração ai_client ────────────────────────────────────────────────────
-
-
-class TestIntegracaoAiClient:
-    """Testa que ai_client pode importar e usar a KB sem erros."""
-
-    def test_importa_local_kb_disponivel(self):
-        from src.infrastructure.ai_client import _local_kb_disponivel
-        assert _local_kb_disponivel() is True
-
-    def test_analisar_local_kb_retorna_string(self):
-        from src.infrastructure.ai_client import _analisar_local_kb
-        resultado = _analisar_local_kb("o que é NFA")
-        assert isinstance(resultado, str)
-        assert len(resultado) > 20
-
-    def test_analisar_local_kb_com_callback(self):
-        from src.infrastructure.ai_client import _analisar_local_kb
-        capturado = []
-        _analisar_local_kb("o que é FUNRURAL", callback=lambda x: capturado.append(x))
-        assert len(capturado) == 1
-        assert isinstance(capturado[0], str)

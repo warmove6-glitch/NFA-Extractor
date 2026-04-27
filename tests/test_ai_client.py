@@ -15,7 +15,6 @@ from src.domain.extractor import NFA, Parte, Produto
 from src.infrastructure.ai_client import (
     _carregar_env,
     _claude_disponivel,
-    _ollama_disponivel,
     _montar_prompt,
     analisar_producao,
 )
@@ -84,17 +83,6 @@ class TestDisponibilidade:
     def test_claude_indisponivel_com_chave_errada(self):
         with patch('src.infrastructure.ai_client._carregar_env', return_value='chave_invalida'):
             assert _claude_disponivel() is False
-
-    def test_ollama_disponivel_quando_servidor_responde(self):
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        with patch('src.infrastructure.ai_client.requests.get', return_value=mock_response):
-            assert _ollama_disponivel() is True
-
-    def test_ollama_indisponivel_quando_timeout(self):
-        import requests as req
-        with patch('src.infrastructure.ai_client.requests.get', side_effect=req.exceptions.ConnectionError):
-            assert _ollama_disponivel() is False
 
 
 # ─── Testes: _montar_prompt() ─────────────────────────────────────────────────
