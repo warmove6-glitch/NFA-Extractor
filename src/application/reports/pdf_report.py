@@ -1,10 +1,14 @@
 """Geração de relatório PDF profissional com ReportLab."""
 
 import re
+import logging
+import time
 from datetime import datetime
 from pathlib import Path
 
 from reportlab.lib import colors
+
+logger = logging.getLogger(__name__)
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -477,6 +481,7 @@ def gerar_pdf(
     - 'simples': Apenas título, KPIs e parecer IA (rápido ~2s)
     - 'detalhado': Tudo incluindo tabelas detalhadas (padrão ~3-5s)
     """
+    t0 = time.time()
     usable_w = W - 4*cm  # margens 2cm cada lado
 
     doc = SimpleDocTemplate(
@@ -573,15 +578,16 @@ def gerar_pdf(
             elements.append(Spacer(1, 0.4*cm))
             secnum += 1
 
-    # ── Seção 1/3: Parecer Técnico (IA) ──────────────────────────────────────
+    # ── Parecer Técnico (IA) ──────────────────────────────────────
     if analise_ia:
-        elements.append(Paragraph(f"{secnum_parecer}. PARECER TÉCNICO E VEREDITO DE RISCO", st['sec']))
+        elements.append(Paragraph(f"{secnum}. PARECER TÉCNICO E VEREDITO DE RISCO", st['sec']))
         elements.extend(_render_markdown(analise_ia, st))
         elements.append(Spacer(1, 0.3*cm))
+        secnum += 1
 
     # ── Seções detalhadas apenas em modo 'detalhado' ──────────────────────────
     if modo_relatorio == 'detalhado':
-        secnum_det = secnum_parecer + 1 if analise_ia else secnum_parecer
+        secnum_det = secnum
 
         # Seção 4: Evidências de Fraude
         if anomalias:
@@ -630,7 +636,13 @@ def gerar_pdf(
         ParagraphStyle('End', parent=st['small'], alignment=TA_CENTER,
                        textColor=colors.grey)))
 
+    t1 = time.time()
+    logger.info(f"⏱️ [PDF MONTAGEM] {t1-t0:.1f}s — {len(elements)} elementos, modo={modo_relatorio}")
+
     doc.build(elements, onFirstPage=_header_footer, onLaterPages=_header_footer)
+
+    t2 = time.time()
+    logger.info(f"⏱️ [PDF RENDERIZAÇÃO] {t2-t1:.1f}s — total {t2-t0:.1f}s")
 
 
 # ── Relatório de auditoria de gado (delegação) ────────────────────────────────

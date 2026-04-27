@@ -114,17 +114,21 @@ async def processar_lote_auditoria(
             ext = os.path.splitext(filename)[1].lower()
 
             try:
+                t_parse_start = time.time()
                 if ext == ".xml":
                     nota_xml = parse_xml(content, modo_resumo="resumido")
                     all_notas.append(_xml_para_nfa(nota_xml))
-                    logger.info(f"XML processado: {filename}")
+                    t_parse = time.time() - t_parse_start
+                    logger.info(f"⏱️  [XML PARSE] {t_parse:.1f}s — {filename}")
                 else:
                     file_path = os.path.join(temp_dir, filename)
                     with open(file_path, "wb") as buf:
                         buf.write(content)
+                    t_extract_start = time.time()
                     notas_pdf, _, _ = extrair_notas(file_path)
+                    t_extract = time.time() - t_extract_start
                     all_notas.extend(notas_pdf)
-                    logger.info(f"PDF processado: {filename}")
+                    logger.info(f"⏱️  [PDF EXTRACT] {t_extract:.1f}s — {filename} → {len(notas_pdf)} notas")
             except Exception as exc:
                 logger.error(f"Falha ao processar {filename}: {exc}")
 
@@ -144,12 +148,15 @@ async def processar_lote_auditoria(
             """Atualizar progresso em tempo real durante análise."""
             logger.info(f"[IA] {texto}")
 
-        logger.info(f"[PRODUÇÃO] Iniciando análise com Claude Vision para {client_name}")
+        logger.info(f"[PRODUCAO] Iniciando Claude Vision para {client_name}")
+        t_claude_start = time.time()
         veredito = analisar_producao(
             all_notas,
             callback=callback_progresso,
             nome_produtor=client_name
         )
+        t_claude = time.time() - t_claude_start
+        logger.info(f"⏱️  [CLAUDE TOTAL] {t_claude:.1f}s")
         _log_tempo("CLAUDE ANALYSIS")
 
         # Geracao de Relatorio PDF (AudiOrg Sovereign)
@@ -157,8 +164,9 @@ async def processar_lote_auditoria(
         pdf_filename = f"Laudo_{task_id[:8]}.pdf"
         pdf_path = os.path.join("data", "laudos", pdf_filename)
         os.makedirs(os.path.join("data", "laudos"), exist_ok=True)
-        
+
         try:
+            t_pdf_start = time.time()
             gerar_pdf(
                 notas=all_notas,
                 saida=pdf_path,
@@ -169,6 +177,8 @@ async def processar_lote_auditoria(
                 score_risco=score_risco,
                 modo_relatorio=modo_relatorio,
             )
+            t_pdf = time.time() - t_pdf_start
+            logger.info(f"⏱️  [PDF TOTAL] {t_pdf:.1f}s — {modo_relatorio}")
             _log_tempo("PDF GERADO")
             logger.info(f"Relatorio PDF gerado: {pdf_path}")
         except Exception as e_pdf:

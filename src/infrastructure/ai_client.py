@@ -26,16 +26,16 @@ def _carregar_env(chave: str) -> str:
     return os.getenv(chave, '')
 
 # MODELOS (PRODUÇÃO)
-CLAUDE_MODEL = 'claude-sonnet-4-6'
+CLAUDE_MODEL_RÁPIDO = 'claude-haiku-4-5-20251001'  # Primário: 2-3x mais rápido
+CLAUDE_MODEL_FALLBACK = 'claude-sonnet-4-6'  # Fallback: máxima qualidade
 
 
 
 
 # ── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
 
-SYSTEM_GAMA = """Especialista Fiscal ORGATEC.
-Analise Notas Fiscais com rigor tributário (CTN, LC 87/96, RICMS, legislação).
-Retorne: veredito jurídico, cenários de risco e conclusão técnica."""
+SYSTEM_GAMA = """Auditor Fiscal — Parecer Técnico Rápido.
+Analise: Consistência, Riscos, Conclusão (máx 5 linhas)."""
 
 def _claude_disponivel() -> bool:
     key = _carregar_env('ANTHROPIC_API_KEY')
@@ -94,34 +94,62 @@ def _montar_prompt(notas: list[NFA]) -> str:
 
 # ── MOTORES INDIVIDUAIS ─────────────────────────────────────────────────────
 
-def _analisar_claude(prompt: str, sys: str, callback=None, timeout_segundos=15) -> str:
+def _analisar_claude(prompt: str, sys: str, callback=None, timeout_segundos=15) -> tuple[str, str]:
+    """
+    Tenta Claude Haiku (rápido) primeiro; fallback para Sonnet se falhar.
+    Retorna: (resposta, modelo_usado)
+    """
+    import time
     api_key = _carregar_env('ANTHROPIC_API_KEY')
     if not api_key or not api_key.startswith('sk-ant'):
         logger.warning("Claude: API key ausente ou inválida.")
-        return "[Claude Inativo]"
+        return "[Claude Inativo]", "nenhum"
+
+    # Tentar Haiku primeiro (rápido)
     cliente = anthropic.Anthropic(api_key=api_key, timeout=timeout_segundos)
-    try:
-        res = ""
-        with cliente.messages.stream(
-            model=CLAUDE_MODEL, max_tokens=2048, system=sys,
-            messages=[{'role': 'user', 'content': prompt}]
-        ) as stream:
-            for t in stream.text_stream:
-                res += t
-                if callback: callback(t)
-        return res
-    except anthropic.AuthenticationError as e:
-        logger.error(f"Claude: Chave API inválida ou expirada — {e}")
-        return "[Claude Falhou: Auth Inválida]"
-    except anthropic.RateLimitError as e:
-        logger.warning(f"Claude: Rate limit atingido — {e}")
-        return "[Claude Falhou: Rate Limit]"
-    except anthropic.APIError as e:
-        logger.error(f"Claude: Erro de API — {e}")
-        return f"[Claude Falhou: {e}]"
-    except Exception as e:
-        logger.error(f"Claude: Erro inesperado — {e}")
-        return f"[Claude Falhou: {e}]"
+    modelo_atual = CLAUDE_MODEL_RÁPIDO
+
+    for tentativa, modelo in [(1, CLAUDE_MODEL_RÁPIDO), (2, CLAUDE_MODEL_FALLBACK)]:
+        try:
+            res = ""
+            t0 = time.time()
+            with cliente.messages.stream(
+                model=modelo, max_tokens=1024, system=sys,
+                messages=[{'role': 'user', 'content': prompt}]
+            ) as stream:
+                for t in stream.text_stream:
+                    res += t
+                    if callback: callback(t)
+            t1 = time.time()
+            model_nome = "Haiku" if modelo == CLAUDE_MODEL_RÁPIDO else "Sonnet"
+            logger.info(f"⏱️  [CLAUDE {model_nome}] {t1-t0:.1f}s — {len(res)} chars")
+            return res, modelo
+        except anthropic.AuthenticationError as e:
+            logger.error(f"Claude: Chave API inválida — {e}")
+            return "[Claude Falhou: Auth Inválida]", modelo
+        except anthropic.RateLimitError as e:
+            if tentativa == 1:
+                logger.warning(f"Haiku: Rate limit, tentando Sonnet...")
+                continue
+            else:
+                logger.warning(f"Claude: Rate limit atingido em ambos modelos — {e}")
+                return "[Claude Falhou: Rate Limit]", modelo
+        except anthropic.APIError as e:
+            if tentativa == 1:
+                logger.warning(f"Haiku falhou com {type(e).__name__}, tentando Sonnet...")
+                continue
+            else:
+                logger.error(f"Claude: Erro de API — {e}")
+                return f"[Claude Falhou: {e}]", modelo
+        except Exception as e:
+            if tentativa == 1:
+                logger.warning(f"Haiku timeout/erro, tentando Sonnet...")
+                continue
+            else:
+                logger.error(f"Claude: Erro inesperado — {e}")
+                return f"[Claude Falhou: {e}]", modelo
+
+    return "[Claude Falhou: Todos os modelos]", "nenhum"
 
 
 def extrair_com_claude_vision(imagem_base64: str, mime_type: str = "image/png", prompt_extracao: str = None) -> dict:
@@ -160,30 +188,51 @@ Retorne em JSON estruturado.
 """
 
     cliente = anthropic.Anthropic(api_key=api_key)
+
     try:
-        response = cliente.messages.create(
-            model=CLAUDE_MODEL,
-            max_tokens=2048,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
+        # Tentar Haiku primeiro (rápido para extração de imagens); fallback para Sonnet
+        response = None
+        for tentativa, modelo in [(1, CLAUDE_MODEL_RÁPIDO), (2, CLAUDE_MODEL_FALLBACK)]:
+            try:
+                import time
+                t0 = time.time()
+                response = cliente.messages.create(
+                    model=modelo,
+                    max_tokens=2048,
+                    messages=[
                         {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": mime_type,
-                                "data": imagem_base64
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt_extracao
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": mime_type,
+                                        "data": imagem_base64
+                                    }
+                                },
+                                {
+                                    "type": "text",
+                                    "text": prompt_extracao
+                                }
+                            ]
                         }
                     ]
-                }
-            ]
-        )
+                )
+                t1 = time.time()
+                model_nome = "Haiku" if modelo == CLAUDE_MODEL_RÁPIDO else "Sonnet"
+                logger.info(f"⏱️  [CLAUDE VISION {model_nome}] {t1-t0:.1f}s")
+                break
+            except anthropic.RateLimitError:
+                if tentativa == 1:
+                    logger.warning("Haiku rate limit, tentando Sonnet...")
+                    continue
+                raise
+            except Exception as e:
+                if tentativa == 1:
+                    logger.warning(f"Haiku falhou, tentando Sonnet...")
+                    continue
+                raise
 
         # Parsear resposta JSON
         texto_resposta = response.content[0].text
@@ -222,11 +271,10 @@ Retorne em JSON estruturado.
 def analisar_producao(notas: list[NFA], callback=None, system_override: str = None,
                      nome_produtor: str = "") -> str:
     """
-    Modo PRODUÇÃO (2026): Claude Vision apenas.
+    Modo PRODUÇÃO (2026): Claude Haiku (primário) → Sonnet (fallback).
 
-    Motor: Claude (15s timeout) — qualidade máxima
-
-    Nota: Swift e KB Local removidos para máxima simplicidade e custo controlado.
+    Estratégia: Haiku é 2-3x mais rápido; fallback automático se falhar.
+    Timeout: 15s (suficiente para ambos os modelos).
     """
     import threading
     import time
@@ -237,16 +285,17 @@ def analisar_producao(notas: list[NFA], callback=None, system_override: str = No
 
     sys = system_override or SYSTEM_GAMA
 
-    # 1. CLAUDE (PRIMARY) — timeout de 15s
     api_key = _carregar_env('ANTHROPIC_API_KEY')
     if api_key and api_key.startswith('sk-ant'):
-        if callback: callback("[PRODUÇÃO] Claude (qualidade máxima) ativo...\n")
+        if callback: callback("[PRODUÇÃO] Claude Haiku (rápido) com fallback Sonnet...\n")
 
-        resultado = {'res': None, 'done': False}
+        resultado = {'res': None, 'modelo': None, 'done': False}
 
         def executar_claude():
             try:
-                resultado['res'] = _analisar_claude(prompt, sys, callback)
+                res, modelo = _analisar_claude(prompt, sys, callback)
+                resultado['res'] = res
+                resultado['modelo'] = modelo
                 resultado['done'] = True
             except Exception as e:
                 resultado['res'] = f"[Claude Error: {e}]"
@@ -258,7 +307,9 @@ def analisar_producao(notas: list[NFA], callback=None, system_override: str = No
 
         if resultado['done'] and resultado['res']:
             res = resultado['res']
+            modelo = resultado['modelo']
             if "[Claude Falhou" not in res and "[Claude Error" not in res:
+                logger.info(f"✅  Análise concluída com {modelo}")
                 return res
 
         logger.error("Análise falhou: Claude indisponível.")

@@ -84,7 +84,7 @@ class TestAnalisarProducao:
     def test_analisar_producao_sucesso_com_claude(self, notas_teste):
         """Quando Claude disponível e responde, retorna análise."""
         with patch('src.infrastructure.ai_client._carregar_env') as mock_env, \
-             patch('src.infrastructure.ai_client._analisar_claude', return_value='Análise Claude OK') as mock_claude:
+             patch('src.infrastructure.ai_client._analisar_claude', return_value=('Análise Claude OK', 'claude-haiku-4-5-20251001')) as mock_claude:
 
             mock_env.side_effect = lambda x: 'sk-ant-test' if x == 'ANTHROPIC_API_KEY' else ''
 
