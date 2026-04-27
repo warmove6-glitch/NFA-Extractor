@@ -108,29 +108,25 @@ async def processar_lote_auditoria(
         notas_xml = []   # NotaFiscalXML (agentes IA via resumo)
         temp_dir  = tempfile.gettempdir()
 
-        for filename, content in files:
+        # Processar apenas primeiro arquivo
+        if files:
+            filename, content = files[0]
             ext = os.path.splitext(filename)[1].lower()
 
-            if ext == ".xml":
-                # ── Caminho XML ──────────────────────────────────────────
-                try:
+            try:
+                if ext == ".xml":
                     nota_xml = parse_xml(content, modo_resumo="resumido")
-                    notas_xml.append(nota_xml)
                     all_notas.append(_xml_para_nfa(nota_xml))
-                    logger.info(f"XML processado: {filename} → {nota_xml.tipo} #{nota_xml.numero}")
-                except Exception as exc:
-                    logger.error(f"Falha ao parsear XML {filename}: {exc}")
-
-            else:
-                # ── Caminho PDF (legado) ─────────────────────────────────
-                file_path = os.path.join(temp_dir, filename)
-                with open(file_path, "wb") as buf:
-                    buf.write(content)
-                try:
+                    logger.info(f"XML processado: {filename}")
+                else:
+                    file_path = os.path.join(temp_dir, filename)
+                    with open(file_path, "wb") as buf:
+                        buf.write(content)
                     notas_pdf, _, _ = extrair_notas(file_path)
                     all_notas.extend(notas_pdf)
-                except Exception as exc:
-                    logger.error(f"Falha ao extrair PDF {filename}: {exc}")
+                    logger.info(f"PDF processado: {filename}")
+            except Exception as exc:
+                logger.error(f"Falha ao processar {filename}: {exc}")
 
         _log_tempo("EXTRAÇÃO COMPLETA")
         valor_total_lote = sum(n.valor_total for n in all_notas)
