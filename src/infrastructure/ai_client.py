@@ -138,16 +138,16 @@ def _montar_prompt(notas: list[NFA]) -> str:
 
 # ── MOTORES INDIVIDUAIS ─────────────────────────────────────────────────────
 
-def _analisar_claude(prompt: str, sys: str, callback=None) -> str:
+def _analisar_claude(prompt: str, sys: str, callback=None, timeout_segundos=15) -> str:
     api_key = _carregar_env('ANTHROPIC_API_KEY')
     if not api_key or not api_key.startswith('sk-ant'):
         logger.warning("Claude: API key ausente ou inválida.")
         return "[Claude Inativo]"
-    cliente = anthropic.Anthropic(api_key=api_key)
+    cliente = anthropic.Anthropic(api_key=api_key, timeout=timeout_segundos)
     try:
         res = ""
         with cliente.messages.stream(
-            model=CLAUDE_MODEL, max_tokens=4096, system=sys,
+            model=CLAUDE_MODEL, max_tokens=2048, system=sys,
             messages=[{'role': 'user', 'content': prompt}]
         ) as stream:
             for t in stream.text_stream:
@@ -363,7 +363,7 @@ def _analisar_ollama(prompt: str, sys: str, callback=None) -> str:
             f"{OLLAMA_URL}/api/generate",
             json={"model": OLLAMA_MODEL, "prompt": f"System: {sys}\nUser: {prompt}", "stream": True},
             stream=True,
-            timeout=30,
+            timeout=8,
         )
         full_text = ""
         for line in response.iter_lines():
@@ -491,51 +491,75 @@ def analisar(notas: list[NFA], callback=None, system_override: str = None,
 def analisar_producao(notas: list[NFA], callback=None, system_override: str = None,
                      nome_produtor: str = "") -> str:
     """
-    Modo PRODUÇÃO (2026): Claude com cache + fallback Swift/Ollama.
+    Modo PRODUÇÃO (2026): Claude com fallback rápido.
 
-    Hierarquia:
-    1. Claude Vision/Text (qualidade máxima, com prompt caching)
-    2. Swift (fallback local)
-    3. Ollama (fallback local secundário)
-    4. KB Local (contingência)
+    Hierarquia OTIMIZADA:
+    1. Claude Vision/Text (15s timeout) — qualidade máxima
+    2. Swift (10s timeout) — fallback local rápido
+    3. KB Local (instantâneo) — contingência final
 
-    Benefícios:
-    - 95% acurácia (vs 75% Swift)
-    - Cache reduz custo 90% em auditorias repetidas
-    - Contingência garantida (nunca falha, tem fallback)
+    Nota: Ollama removido do fluxo (muito lento em produção).
     """
+    import threading
+    import time
+
     prompt = _montar_prompt(notas)
     if nome_produtor:
         prompt = f"PRODUTOR: {nome_produtor}\n\n" + prompt
 
     sys = system_override or SYSTEM_GAMA
 
-    # 1. CLAUDE (PRIMARY) — com cache de legislação fiscal
+    # 1. CLAUDE (PRIMARY) — timeout de 15s
     api_key = _carregar_env('ANTHROPIC_API_KEY')
     if api_key and api_key.startswith('sk-ant'):
         if callback: callback("[PRODUÇÃO] Claude (qualidade máxima) ativo...\n")
-        res = _analisar_claude(prompt, sys, callback)
-        if "[Claude Falhou: Rate Limit]" not in res and "[Claude" not in res[:20]:
-            return res
-        elif "[Claude Falhou: Rate Limit]" in res:
-            if callback: callback("[!] Claude rate limit atingido — fallback ativado\n")
 
-    # 2. SWIFT (FALLBACK LOCAL)
+        resultado = {'res': None, 'done': False}
+
+        def executar_claude():
+            try:
+                resultado['res'] = _analisar_claude(prompt, sys, callback)
+                resultado['done'] = True
+            except Exception as e:
+                resultado['res'] = f"[Claude Error: {e}]"
+                resultado['done'] = True
+
+        thread = threading.Thread(target=executar_claude, daemon=True)
+        thread.start()
+        thread.join(timeout=15)
+
+        if resultado['done'] and resultado['res']:
+            res = resultado['res']
+            if "[Claude Falhou" not in res and "[Claude Error" not in res:
+                return res
+            else:
+                if callback: callback("[!] Claude falhou — fallback ativado\n")
+
+    # 2. SWIFT (FALLBACK LOCAL) — timeout de 10s
     if _swift_disponivel():
-        if callback: callback("[FALLBACK] Swift local (contingência)...\n")
-        res = _analisar_swift(prompt, sys, callback)
-        if "[Swift" not in res:
-            return res
+        if callback: callback("[FALLBACK] Swift local (rápido)...\n")
 
-    # 3. OLLAMA (FALLBACK LOCAL SECUNDÁRIO)
-    if _ollama_disponivel():
-        if callback: callback("[FALLBACK] Ollama (contingência)...\n")
-        res = _analisar_ollama(prompt, sys, callback)
-        if "[Ollama Erro" not in res:
-            return res
+        resultado = {'res': None, 'done': False}
 
-    # 4. KB LOCAL (CONTINGÊNCIA FINAL)
-    if callback: callback("[!] Motores indisponíveis — Base de Conhecimento Local...\n")
+        def executar_swift():
+            try:
+                resultado['res'] = _analisar_swift(prompt, sys, callback)
+                resultado['done'] = True
+            except Exception as e:
+                resultado['res'] = f"[Swift Error: {e}]"
+                resultado['done'] = True
+
+        thread = threading.Thread(target=executar_swift, daemon=True)
+        thread.start()
+        thread.join(timeout=10)
+
+        if resultado['done'] and resultado['res']:
+            res = resultado['res']
+            if "[Swift" not in res:
+                return res
+
+    # 3. KB LOCAL (CONTINGÊNCIA FINAL) — instantâneo
+    if callback: callback("[KB] Base de Conhecimento Local (instantâneo)...\n")
     return _analisar_local_kb(prompt, callback)
 
 # ── PIPELINE EM LOTES (TURBO) ──────────────────────────────────────────────
