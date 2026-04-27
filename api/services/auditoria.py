@@ -122,32 +122,18 @@ async def processar_lote_auditoria(
 
         valor_total_lote = sum(n.valor_total for n in all_notas)
 
-        # Bloco de contexto XML para os agentes (adicional ao resumo do PDF)
-        contexto_xml = ""
-        if notas_xml:
-            contexto_xml = "\n\n=== DADOS XML (parsados diretamente) ===\n"
-            contexto_xml += resumo_lote_para_agentes(notas_xml, modo="resumido")
-        
         tasks_status[task_id] = {"status": "processamento_quantitativo", "progress": 30}
-        
-        # Motor Matematico (Ground Truth)
+
+        # Ground Truth Simplificado (sem XGBoost — muito lento em produção)
         from src.domain.extractor import resumo_geral
-        from src.domain.schemas import AuditoriaMacroSchema
-        from src.application.sovereign_engine import AntiGravityQuantEngine
-        
+
         resumo = resumo_geral(all_notas, nome_contribuinte=client_name)
-        dto = AuditoriaMacroSchema(
-            contribuinte_id=_formatar_documento(client_cpf),
-            total_cabecas_compradas=int(resumo.get('total_cabecas', 0)) if "REM" not in str(resumo) else 0,
-            total_cabecas_vendidas=int(resumo.get('total_cabecas', 0)),
-            total_receita_bruta=resumo.get('total_valor', 0.0),
-            avg_preco_venda=resumo.get('ticket_medio', 0.0)
-        )
-        
-        # Rodar Engine Quantitativa
-        engine = AntiGravityQuantEngine()
-        dto_final = engine.execute_xgboost_bayesian_proxy(dto)
-        logger.info(f"GROUND TRUTH: Score {dto_final.score_xgboost_final}, Flag {dto_final.fraud_flag_level}")
+
+        # Score simplificado: baseado apenas em análise de risco qualitativa
+        score_risco = 0.5  # Neutral (será refinado pela IA)
+        nivel_risco = "MÉDIO"  # Will be overridden by IA veredito
+
+        logger.info(f"GROUND TRUTH SIMPLIFICADO: Valor Total {valor_total_lote}, {len(all_notas)} notas")
         
         tasks_status[task_id] = {"status": "analisando_ia", "progress": 50}
 
@@ -203,8 +189,8 @@ A analise qualitativa da Squad foi omitida para garantir a entrega imediata dos 
                 analise_ia=veredito,
                 nome_contribuinte=client_name,
                 cpf_contribuinte=client_cpf,
-                risco_nivel=dto_final.fraud_flag_level,
-                score_risco=float(dto_final.score_xgboost_final or 0),
+                risco_nivel=nivel_risco,
+                score_risco=score_risco,
             )
             logger.info(f"Relatorio PDF gerado: {pdf_path}")
         except Exception as e_pdf:
@@ -216,15 +202,23 @@ A analise qualitativa da Squad foi omitida para garantir a entrega imediata dos 
             }
             return  # Interrompe - nao persistir laudo sem relatorio
 
-        # Persistencia Soberana (SQUAD ALFA)
-        # Detectar qual IA foi usada (para monitoramento)
+        # Detectar qual IA foi usada e refinar score de risco
         ia_utilizada = "Claude"
         if "[Swift" in veredito:
             ia_utilizada = "Swift (Fallback Local)"
-        elif "[Ollama" in veredito:
-            ia_utilizada = "Ollama (Fallback Local 2)"
         elif "[KB Local" in veredito:
             ia_utilizada = "KB Local (Contingência)"
+
+        # Score refinado baseado no veredito da IA
+        if "ANOMALIA" in veredito or "fraude" in veredito.lower() or "risco alto" in veredito.lower():
+            score_risco = 0.8
+            nivel_risco = "ALTO"
+        elif "consistência" in veredito.lower() or "cuidado" in veredito.lower():
+            score_risco = 0.6
+            nivel_risco = "MÉDIO"
+        else:
+            score_risco = 0.3
+            nivel_risco = "BAIXO"
 
         novo_laudo = Laudo(
             cliente_id=1,  # Mock para o cliente de teste
