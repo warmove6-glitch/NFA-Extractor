@@ -8,6 +8,8 @@ from fastapi import UploadFile  # noqa: F401 (mantido para compatibilidade de im
 from src.domain.extractor import extrair_notas, NFA, Parte, resumo_geral
 from src.domain.xml_parser import parse_xml, NotaFiscalXML
 from src.domain.analise_local import calcular_metricas_risco, gerar_veredito_local
+from src.domain.planilha_ir import gerar_dados_planilha, gerar_html_planilha
+from src.domain.planilha_ir_premium import gerar_html_planilha_premium
 from src.application.reports.pdf_report import gerar_pdf
 from src.infrastructure.database_v2 import SessionLocal, Laudo
 
@@ -153,37 +155,78 @@ async def processar_lote_auditoria(
         logger.info(f"⏱️  [ANÁLISE LOCAL] {t_analise:.2f}s — Score: {score_risco:.3f}, Nível: {nivel_risco}")
         _log_tempo("ANÁLISE CONCLUÍDA")
 
-        # Geracao de Relatorio PDF (AudiOrg Sovereign)
-        tasks_status[task_id] = {"status": "gerando_pdf", "progress": 80}
-        pdf_filename = f"Laudo_{task_id[:8]}.pdf"
-        pdf_path = os.path.join("data", "laudos", pdf_filename)
-        os.makedirs(os.path.join("data", "laudos"), exist_ok=True)
-
+        # Geração da Planilha IRPF (premium design) — novo formato padrão
+        tasks_status[task_id] = {"status": "gerando_planilha", "progress": 65}
+        t_planilha_start = time.time()
         try:
-            t_pdf_start = time.time()
-            gerar_pdf(
-                notas=all_notas,
-                saida=pdf_path,
-                analise_ia=veredito,
-                nome_contribuinte=client_name,
-                cpf_contribuinte=client_cpf,
-                risco_nivel=nivel_risco,
-                score_risco=score_risco,
-                modo_relatorio=modo_relatorio,
-                formato=formato_relatorio,
-            )
-            t_pdf = time.time() - t_pdf_start
-            logger.info(f"⏱️  [{formato_relatorio.upper()} TOTAL] {t_pdf:.1f}s — {modo_relatorio}")
-            _log_tempo(f"{formato_relatorio.upper()} GERADO")
-            logger.info(f"Relatorio {formato_relatorio} gerado: {pdf_path}")
-        except Exception as e_pdf:
-            logger.error(f"Erro critico ao gerar PDF: {e_pdf}")
-            tasks_status[task_id] = {
-                "status": "erro",
-                "erro": f"Falha na geracao do relatorio PDF: {e_pdf}",
-                "progress": 80,
-            }
-            return  # Interrompe - nao persistir laudo sem relatorio
+            dados_planilha = gerar_dados_planilha(all_notas, client_name)
+            html_planilha = gerar_html_planilha_premium(dados_planilha)
+            t_planilha = time.time() - t_planilha_start
+            logger.info(f"⏱️  [PLANILHA IRPF PREMIUM] {t_planilha:.3f}s")
+            _log_tempo("PLANILHA PREMIUM GERADA")
+        except Exception as e_planilha:
+            logger.error(f"Erro ao gerar planilha premium: {e_planilha}")
+            logger.info("Fallback para planilha simples")
+            try:
+                html_planilha = gerar_html_planilha(dados_planilha)
+            except:
+                html_planilha = "<p>Erro ao gerar planilha IRPF</p>"
+
+        # Salvar relatório (HTML ou PDF conforme formato)
+        tasks_status[task_id] = {"status": "gerando_relatorio", "progress": 80}
+        os.makedirs(os.path.join("data", "laudos"), exist_ok=True)
+        relatorio_path = None
+
+        if formato_relatorio == 'html':
+            # Usar planilha HTML como output principal (rápido, ~1ms)
+            planilha_filename = f"Relatorio_IRPF_{task_id[:8]}.html"
+            relatorio_path = os.path.join("data", "laudos", planilha_filename)
+            try:
+                t_html_start = time.time()
+                with open(relatorio_path, "w", encoding="utf-8") as f:
+                    f.write(html_planilha)
+                t_html = time.time() - t_html_start
+                logger.info(f"⏱️  [HTML TOTAL] {t_html:.3f}s — {modo_relatorio}")
+                _log_tempo("HTML GERADO")
+                logger.info(f"Relatorio HTML (planilha IRPF) gerado: {relatorio_path}")
+            except Exception as e_html:
+                logger.error(f"Erro ao salvar HTML: {e_html}")
+                tasks_status[task_id] = {
+                    "status": "erro",
+                    "erro": f"Falha ao salvar relatório HTML: {e_html}",
+                    "progress": 80,
+                }
+                return
+        else:
+            # Gerar PDF com ReportLab (compatibilidade)
+            pdf_filename = f"Laudo_{task_id[:8]}.pdf"
+            relatorio_path = os.path.join("data", "laudos", pdf_filename)
+
+            try:
+                t_pdf_start = time.time()
+                gerar_pdf(
+                    notas=all_notas,
+                    saida=relatorio_path,
+                    analise_ia=veredito,
+                    nome_contribuinte=client_name,
+                    cpf_contribuinte=client_cpf,
+                    risco_nivel=nivel_risco,
+                    score_risco=score_risco,
+                    modo_relatorio=modo_relatorio,
+                    formato=formato_relatorio,
+                )
+                t_pdf = time.time() - t_pdf_start
+                logger.info(f"⏱️  [PDF TOTAL] {t_pdf:.1f}s — {modo_relatorio}")
+                _log_tempo("PDF GERADO")
+                logger.info(f"Relatorio PDF gerado: {relatorio_path}")
+            except Exception as e_pdf:
+                logger.error(f"Erro critico ao gerar PDF: {e_pdf}")
+                tasks_status[task_id] = {
+                    "status": "erro",
+                    "erro": f"Falha na geracao do relatorio PDF: {e_pdf}",
+                    "progress": 80,
+                }
+                return
 
         # Detectar qual IA foi usada e refinar score de risco
         ia_utilizada = "Claude"
@@ -203,27 +246,42 @@ async def processar_lote_auditoria(
             score_risco = 0.3
             nivel_risco = "BAIXO"
 
-        novo_laudo = Laudo(
-            cliente_id=1,  # Mock para o cliente de teste
-            veredito_ia=veredito,
-            qtd_notas=len(all_notas),
-            valor_total=valor_total_lote,
-            qtd_anomalias=veredito.count("ANOMALIA") if "ANOMALIA" in veredito else 0,
-            pdf_path=pdf_path
-        )
-        db.add(novo_laudo)
-        db.commit()
-
-        _log_tempo("PERSISTÊNCIA BD")
-        logger.info(f"[SUCESSO] Auditoria {task_id} concluída com IA: {ia_utilizada}")
-
+        # Marcar como concluído IMEDIATAMENTE (não-bloqueante)
         tasks_status[task_id] = {
             "status": "concluido",
             "progress": 100,
             "resultado": veredito,
             "total_notas": len(all_notas)
         }
+
+        # Salvar em banco em thread separada (não bloqueia resposta)
+        def _salvar_laudo_async(laudo_data):
+            try:
+                db_async = SessionLocal()
+                novo_laudo = Laudo(**laudo_data)
+                db_async.add(novo_laudo)
+                t_commit_start = time.time()
+                db_async.commit()
+                t_commit = time.time() - t_commit_start
+                logger.info(f"⏱️  [DB COMMIT ASYNC] {t_commit:.2f}s")
+                db_async.close()
+            except Exception as e:
+                logger.error(f"Erro no commit async: {e}")
+
+        laudo_data = {
+            'cliente_id': 1,
+            'veredito_ia': veredito[:500],
+            'qtd_notas': len(all_notas),
+            'valor_total': valor_total_lote,
+            'qtd_anomalias': veredito.count("ANOMALIA") if "ANOMALIA" in veredito else 0,
+            'pdf_path': relatorio_path
+        }
+
+        db_thread = threading.Thread(target=_salvar_laudo_async, args=(laudo_data,), daemon=True)
+        db_thread.start()
+
         _log_tempo("FIM")
+        logger.info(f"[SUCESSO] Auditoria {task_id} concluída com IA: {ia_utilizada} (BD salvando em background)")
 
     except Exception as e:
         logger.error(f"Erro no processamento da auditoria {task_id}: {e}")

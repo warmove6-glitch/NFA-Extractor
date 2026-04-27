@@ -36,22 +36,27 @@ logger = logging.getLogger(__name__)
 
 LOGO_PATH = str(Path(__file__).parent / 'assets' / 'logo.png')
 
-# ── Paleta de cores (Design Moderno) ──────────────────────────────────────────
-SIDEBAR    = colors.HexColor('#2d3436')  # Cinza escuro para sidebar
-PRIMARIO   = colors.HexColor('#3b82f6')  # Azul moderno
-PRIMARIO_LIGHT = colors.HexColor('#dbeafe')  # Azul claro
-VERDE      = colors.HexColor('#10b981')
-VERDE_CLAR = colors.HexColor('#d1fae5')
-LARANJA    = colors.HexColor('#f59e0b')
-VERMELHO   = colors.HexColor('#ef4444')
+# ── Paleta de cores (Fiscal Clarity - Premium) ───────────────────────────────────
+# Inspirado em design minimalista profissional
+SIDEBAR    = colors.HexColor('#0f3a66')  # Azul escuro (Fiscal Clarity)
+PRIMARIO   = colors.HexColor('#4db8ff')  # Azul claro
+PRIMARIO_LIGHT = colors.HexColor('#e6f5ff')  # Azul muito claro
+VERDE      = colors.HexColor('#22543d')  # Verde escuro (VENDA)
+VERDE_CLAR = colors.HexColor('#d4f4dd')  # Verde claro (VENDA badge)
+LARANJA    = colors.HexColor('#78350f')  # Laranja escuro (REMESSA)
+LARANJ_CLAR= colors.HexColor('#fed7aa')  # Laranja claro (REMESSA badge)
+CYAN       = colors.HexColor('#064e3b')  # Cyan escuro (TRANSFERENCIA)
+CYAN_CLAR  = colors.HexColor('#a7f3d0')  # Cyan claro (TRANSFERENCIA badge)
+ROXO       = colors.HexColor('#3f0f5c')  # Roxo (OUTRAS)
+ROXO_CLAR  = colors.HexColor('#ddd6fe')  # Roxo claro (OUTRAS badge)
+VERMELHO   = colors.HexColor('#dc2626')
 VERM_CLAR  = colors.HexColor('#fee2e2')
-LARANJ_CLAR= colors.HexColor('#fef3c7')
-CINZA_ESC  = colors.HexColor('#4b5563')
-CINZA_MED  = colors.HexColor('#94a3b8')
-CINZA_CLAR = colors.HexColor('#f8fafc')
+CINZA_ESC  = colors.HexColor('#2d3748')
+CINZA_MED  = colors.HexColor('#718096')
+CINZA_CLAR = colors.HexColor('#f7fafc')
 BORDER     = colors.HexColor('#e2e8f0')
 BRANCO     = colors.white
-TEXTO      = colors.HexColor('#1e293b')
+TEXTO      = colors.HexColor('#1a202c')
 
 # Legacy colors para compatibilidade
 AZUL_ESC   = SIDEBAR
@@ -63,13 +68,13 @@ W, H = A4
 
 _RISCO_BG = {
     'ALTO':    VERM_CLAR,
-    'CRÍTICO': colors.HexColor('#FCE4E4'),
+    'CRÍTICO': colors.HexColor('#fee2e2'),
     'MÉDIO':   LARANJ_CLAR,
     'BAIXO':   VERDE_CLAR,
 }
 _RISCO_FG = {
     'ALTO':    VERMELHO,
-    'CRÍTICO': colors.HexColor('#B91C1C'),
+    'CRÍTICO': colors.HexColor('#991b1b'),
     'MÉDIO':   LARANJA,
     'BAIXO':   VERDE,
 }

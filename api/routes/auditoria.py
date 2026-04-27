@@ -3,10 +3,12 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from typing import List
 import uuid
+import logging
 from datetime import datetime
-from jinja2 import Template
 from api.services.auditoria import processar_lote_auditoria, tasks_status
 from src.infrastructure.database_v2 import SessionLocal, Cliente, Laudo
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auditoria", tags=["Auditoria"])
 
@@ -98,113 +100,32 @@ async def visualizar_relatorio_html(
     laudo_id: int,
     db: Session = Depends(get_db),
 ):
-    """Gera e retorna relatório moderno em HTML baseado no laudo."""
+    """Retorna a planilha IRPF HTML armazenada no laudo."""
+    from pathlib import Path
+
     laudo = db.query(Laudo).filter(Laudo.id == laudo_id).first()
     if not laudo:
         raise HTTPException(status_code=404, detail=f"Laudo {laudo_id} não encontrado")
 
-    cliente = db.query(Cliente).filter(Cliente.id == laudo.cliente_id).first()
+    # Ler diretamente o arquivo HTML da planilha armazenado em pdf_path
+    if laudo.pdf_path:
+        try:
+            pdf_path = Path(laudo.pdf_path)
+            if pdf_path.exists():
+                with open(pdf_path, "r", encoding="utf-8") as f:
+                    return f.read()
+        except Exception as e:
+            logger.error(f"Erro ao ler planilha do laudo {laudo_id}: {e}")
 
-    conformidade = 100 - (laudo.qtd_anomalias / max(laudo.qtd_notas, 1) * 100)
-    nivel_risco = "ALTO" if laudo.qtd_anomalias > 5 else "MÉDIO" if laudo.qtd_anomalias > 2 else "BAIXO"
-    score_risco = round((laudo.qtd_anomalias / max(laudo.qtd_notas, 1) * 10), 1)
-
-    data_formatada = laudo.data_auditoria.strftime("%d de %B, %Y") if laudo.data_auditoria else "N/A"
-    hora_formatada = laudo.data_auditoria.strftime("%H:%M:%S") if laudo.data_auditoria else "N/A"
-
-    veredito_completo = laudo.veredito_ia or "Análise não disponível"
-
-    html_template = """<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Relatório de Auditoria NFA - Laudo #{{ laudo_id }}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background-color: #f5f7fa; color: #333; }
-        .container { display: flex; min-height: 100vh; }
-        .sidebar { width: 280px; background-color: #2d3436; color: #ecf0f1; padding: 40px 30px; box-shadow: 2px 0 8px rgba(0,0,0,0.1); }
-        .sidebar-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #95a5a6; margin-bottom: 20px; margin-top: 30px; }
-        .sidebar-title:first-child { margin-top: 0; }
-        .metadata-item { margin-bottom: 16px; }
-        .metadata-label { font-size: 11px; color: #bdc3c7; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-        .metadata-value { font-size: 14px; color: #ecf0f1; font-weight: 500; word-break: break-word; }
-        .metadata-badge { display: inline-block; background-color: #27ae60; color: white; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 4px; }
-        .metadata-badge.warning { background-color: #f39c12; }
-        .metadata-badge.danger { background-color: #e74c3c; }
-        .main { flex: 1; padding: 40px; overflow-y: auto; }
-        .header { margin-bottom: 40px; }
-        .header-title { font-size: 32px; font-weight: 700; color: #2d3436; margin-bottom: 8px; }
-        .header-subtitle { font-size: 14px; color: #7f8c8d; font-weight: 400; }
-        .card { background-color: white; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-        .card-title { font-size: 18px; font-weight: 600; color: #2d3436; margin-bottom: 16px; border-bottom: 2px solid #ecf0f1; padding-bottom: 12px; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 24px; }
-        .stat-box { background: linear-gradient(135deg, #f5f7fa 0%, #ecf0f1 100%); padding: 16px; border-radius: 8px; text-align: center; }
-        .stat-label { font-size: 12px; color: #7f8c8d; font-weight: 600; text-transform: uppercase; margin-bottom: 8px; }
-        .stat-value { font-size: 24px; font-weight: 700; color: #2d3436; }
-        .analysis-section { background: linear-gradient(135deg, #f5f7fa 0%, #ecf0f1 100%); border-left: 4px solid #2980b9; padding: 16px; border-radius: 8px; margin-top: 12px; font-size: 13px; line-height: 1.6; color: #555; white-space: pre-wrap; word-wrap: break-word; }
-        .footer { text-align: center; padding: 20px 0; border-top: 1px solid #ecf0f1; margin-top: 20px; font-size: 12px; color: #95a5a6; }
-        @media (max-width: 768px) { .container { flex-direction: column; } .sidebar { width: 100%; padding: 30px 20px; } .main { padding: 30px 20px; } }
-    </style>
-</head>
+    # Fallback: HTML vazio se arquivo não encontrado
+    return """<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Laudo {}</title></head>
 <body>
-    <div class="container">
-        <aside class="sidebar">
-            <div class="sidebar-title">Status</div>
-            <div class="metadata-item"><div class="metadata-label">Situação</div><div class="metadata-value"><span class="metadata-badge">Concluído</span></div></div>
-            <div class="sidebar-title">Documento</div>
-            <div class="metadata-item"><div class="metadata-label">ID da Auditoria</div><div class="metadata-value">AUD-{{ laudo_id }}</div></div>
-            <div class="metadata-item"><div class="metadata-label">Data de Emissão</div><div class="metadata-value">{{ data_formatada }}</div></div>
-            <div class="sidebar-title">Contribuinte</div>
-            <div class="metadata-item"><div class="metadata-label">Nome</div><div class="metadata-value">{{ cliente.nome if cliente else 'N/A' }}</div></div>
-            <div class="metadata-item"><div class="metadata-label">CNPJ/CPF</div><div class="metadata-value">{{ cliente.cpf_cnpj if cliente else 'N/A' }}</div></div>
-            <div class="sidebar-title">Risco</div>
-            <div class="metadata-item"><div class="metadata-label">Nível</div><div class="metadata-value"><span class="metadata-badge {% if nivel_risco == 'ALTO' %}danger{% elif nivel_risco == 'MÉDIO' %}warning{% endif %}">{{ nivel_risco }}</span></div></div>
-            <div class="metadata-item"><div class="metadata-label">Score</div><div class="metadata-value">{{ score_risco }} / 10</div></div>
-        </aside>
-        <main class="main">
-            <div class="header">
-                <h1 class="header-title">Relatório de Auditoria NFA</h1>
-                <p class="header-subtitle">Análise automatizada de Notas Fiscais Agropecuárias com IA</p>
-            </div>
-            <div class="card">
-                <h2 class="card-title">Resumo Executivo</h2>
-                <div class="stats-grid">
-                    <div class="stat-box"><div class="stat-label">Notas Processadas</div><div class="stat-value">{{ qtd_notas }}</div></div>
-                    <div class="stat-box"><div class="stat-label">Valor Total</div><div class="stat-value">R$ {{ valor_total_formatado }}</div></div>
-                    <div class="stat-box"><div class="stat-label">Anomalias</div><div class="stat-value">{{ qtd_anomalias }}</div></div>
-                    <div class="stat-box"><div class="stat-label">Conformidade</div><div class="stat-value">{{ conformidade_pct }}</div></div>
-                </div>
-            </div>
-            <div class="card">
-                <h2 class="card-title">Análise Técnica</h2>
-                <p style="font-size: 12px; color: #7f8c8d; margin-bottom: 12px; text-transform: uppercase; font-weight: 600;">Veredito do Auditor Fiscal</p>
-                <div class="analysis-section">{{ veredito_completo }}</div>
-            </div>
-            <footer class="footer"><p>© 2026 ORGATEC IA. Todos os direitos reservados. | Laudo #{{ laudo_id }}</p></footer>
-        </main>
-    </div>
+<h1>Planilha IRPF - Laudo #{}</h1>
+<p>Arquivo da planilha não encontrado. Caminho: {}</p>
 </body>
-</html>"""
-
-    template = Template(html_template)
-    html_content = template.render(
-        laudo_id=laudo_id,
-        qtd_notas=laudo.qtd_notas,
-        valor_total_formatado=f"{laudo.valor_total:,.2f}",
-        qtd_anomalias=laudo.qtd_anomalias,
-        conformidade_pct=f"{conformidade:.1f}%",
-        data_formatada=data_formatada,
-        hora_formatada=hora_formatada,
-        cliente=cliente,
-        nivel_risco=nivel_risco,
-        score_risco=score_risco,
-        veredito_completo=veredito_completo,
-    )
-
-    return html_content
+</html>""".format(laudo_id, laudo_id, laudo.pdf_path or "N/A")
 
 
 @router.get("/status/{task_id}")
@@ -241,24 +162,60 @@ async def listar_laudos(
     ]
 
 
+@router.get("/planilha/{task_id}", response_class=HTMLResponse)
+async def visualizar_planilha(task_id: str):
+    """Retorna a planilha IRPF em HTML para visualização direta no navegador."""
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    html_filename = f"Relatorio_IRPF_{task_id[:8]}.html"
+    html_path = project_root / "data" / "laudos" / html_filename
+
+    if not html_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Planilha IRPF não encontrada para task_id: {task_id[:8]}"
+        )
+
+    try:
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao ler planilha: {str(e)}")
+
+
 @router.get("/download/{task_id}")
 async def baixar_relatorio(task_id: str):
     import os
     from pathlib import Path
     from fastapi.responses import FileResponse
 
-    pdf_filename = f"Laudo_{task_id[:8]}.pdf"
-    # Caminho absoluto baseado no diretório raiz do projeto
     project_root = Path(__file__).resolve().parent.parent.parent
-    pdf_path = project_root / "data" / "laudos" / pdf_filename
+    laudos_dir = project_root / "data" / "laudos"
 
-    if not pdf_path.exists():
-        raise HTTPException(status_code=404, detail=f"Relatório PDF não encontrado: {pdf_filename}")
+    # Procurar por HTML da planilha (padrão) ou PDF (fallback)
+    html_filename = f"Relatorio_IRPF_{task_id[:8]}.html"
+    pdf_filename = f"Laudo_{task_id[:8]}.pdf"
 
-    return FileResponse(
-        path=str(pdf_path),
-        filename=pdf_filename,
-        media_type='application/pdf'
-    )
+    html_path = laudos_dir / html_filename
+    pdf_path = laudos_dir / pdf_filename
+
+    if html_path.exists():
+        return FileResponse(
+            path=str(html_path),
+            filename=html_filename,
+            media_type='text/html'
+        )
+    elif pdf_path.exists():
+        return FileResponse(
+            path=str(pdf_path),
+            filename=pdf_filename,
+            media_type='application/pdf'
+        )
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Relatório não encontrado para task_id: {task_id[:8]}"
+        )
 
 

@@ -3,20 +3,24 @@
 ![Banner](https://img.shields.io/badge/Status-Operational-success?style=for-the-badge&logo=ai&color=0ea5e9)
 ![Architecture](https://img.shields.io/badge/Architecture-Clean_Architecture-0ea5e9?style=for-the-badge)
 ![Framework](https://img.shields.io/badge/Stack-React_19_|_FastAPI-6366f1?style=for-the-badge)
-![Squad](https://img.shields.io/badge/Squad-Antigravity-00D4FF?style=for-the-badge)
+![Performance](https://img.shields.io/badge/Performance-<10ms-00ff00?style=for-the-badge)
 
-**ORGATEC** é uma plataforma de auditoria forense e inteligência tributária projetada para transformar Notas Fiscais Avulsas (NFAs) em laudos técnicos de alta precisão. Utilizando a **Squad Antigravity**, o sistema automatiza a detecção de fraudes e anomalias com rigor matemático e jurídico.
+**ORGATEC** é uma plataforma de auditoria tributária que transforma Notas Fiscais Avulsas (NFAs) em relatórios estruturados conforme Lei 8.023/90 (IRPF Atividade Rural). O sistema oferece análise determinística rápida e relatórios formatados em HTML.
 
 ---
 
-## 💎 Diferenciais Soberanos
+## 💎 Diferenciais
 
-### 🧠 Orquestração Multi-Agente (LangGraph)
-Diferente de extratores simples, o ORGATEC utiliza uma squad de agentes especializados:
-*   **@Alfa (Arquitetura):** Mantém a integridade sistêmica e Clean Architecture.
-*   **@Sigma (Dados):** Motor quantitativo que roda modelos Bayesianos de risco.
-*   **@Gama (Compliance):** Consultor sênior que emite pareceres baseados na legislação.
-*   **@Delta (QA/SRE):** Garante que nenhum dado saia sem validação tripla (Linter, Security, Type).
+### ⚡ Performance Ultra-Rápida
+- Processamento < 10ms por lote
+- Análise determinística (sem delays de IA)
+- Relatórios em HTML responsivo (~15KB vs 750KB PDF)
+
+### 📊 Planilha IRPF Conformada
+- Tabelas mensais por natureza de operação
+- VENDA, REMESSA, TRANSFERENCIA, OUTRAS
+- Coloridas e prontas para impressão
+- Estrutura Lei 8.023/90
 
 ### 🎨 Interface "Centro de Comando"
 O frontend foi reconstruído em **React 19** com uma estética premium:

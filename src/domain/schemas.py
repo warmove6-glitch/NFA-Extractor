@@ -19,7 +19,7 @@ class AuditoriaMacroSchema(BaseModel):
     avg_preco_compra: float = Field(default=0.0, ge=0.0)
     avg_preco_venda: float = Field(default=0.0, ge=0.0)
     
-    # Detecção Qualitativa Quantitativa (@Sigma)
+    # Detecção Qualitativa Quantitativa
     avg_head_ratio_anomality: float = Field(default=0.0, description="Distorção Preço Compra/Venda (>1.5 aciona Flag)")
     fraud_flag_level: str = Field(default="NONE") # [NONE, SUSPICIOUS, HIGH_ALERT, SYSTEMIC_FRAUD]
     score_xgboost_final: float = Field(default=0.0, ge=0.0, le=1.0)

@@ -129,7 +129,7 @@ export default function AuditoriaModule() {
     <div className="max-w-5xl space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-navy-900" style={{fontFamily:'Poppins,sans-serif'}}>Auditoria NFA</h1>
-        <p className="text-navy-500 text-sm mt-0.5">Envie Notas Fiscais Agropecuárias em PDF para análise automatizada pela Squad.</p>
+        <p className="text-navy-500 text-sm mt-0.5">Envie Notas Fiscais Agropecuárias em PDF para análise automatizada e geração de planilha IRPF.</p>
       </div>
 
       {/* Steps indicator */}
@@ -272,7 +272,7 @@ export default function AuditoriaModule() {
                 <div>
                   <p className="text-sm font-semibold text-navy-400">Aguardando envio</p>
                   <p className="text-xs text-navy-300 mt-1 max-w-xs">
-                    Selecione um cliente e os arquivos PDF para iniciar a auditoria pela Squad de 9 agentes.
+                    Selecione um cliente e os arquivos PDF para iniciar a auditoria automatizada.
                   </p>
                 </div>
               </div>
@@ -298,7 +298,6 @@ export default function AuditoriaModule() {
                       <div className="h-full bg-accent-600 rounded-full transition-all duration-500 ease-out"
                         style={{ width: `${progress.pct}%` }} />
                     </div>
-                    <p className="text-[10px] text-navy-400 mt-2">Agentes: @Alfa @Beta @Sigma @Gama @Contador @Fiscal @Jurídico @Delta @Omega</p>
                   </div>
                 )}
               </div>
