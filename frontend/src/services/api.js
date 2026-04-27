@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8081',
+  baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8001',
   timeout: 120000, // 2 min — AI calls (Claude streaming) can take 30–60s
 });
 

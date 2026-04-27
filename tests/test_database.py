@@ -92,4 +92,9 @@ class TestDatabasePersistence:
         with TestingSessionLocal() as db:
             nota_db = db.query(NotaModel).first()
             assert nota_db is not None
+            assert len(nota_db.produtos) == 1
+            assert nota_db.produtos[0].codigo == "1070"
+            assert nota_db.produtos[0].descricao == "GADO"
+            assert nota_db.produtos[0].quantidade == 10.0
+            assert nota_db.produtos[0].vlr_total == 25000.0
  

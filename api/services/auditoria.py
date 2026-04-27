@@ -3,14 +3,32 @@ import tempfile
 import logging
 import threading
 from typing import Any, List
-from fastapi import UploadFile
-from src.domain.extractor import extrair_notas
+from fastapi import UploadFile  # noqa: F401 (mantido para compatibilidade de imports externos)
+from src.domain.extractor import extrair_notas, NFA, Parte
+from src.domain.xml_parser import parse_xml, resumo_lote_para_agentes, NotaFiscalXML
 from src.application.analytics_engine import processar_para_dataframe
 from src.domain.agents_engine import rodar_auditoria_completa
 from src.application.reports.pdf_report import gerar_pdf
 from src.infrastructure.database_v2 import SessionLocal, Laudo
 
 logger = logging.getLogger(__name__)
+
+
+def _xml_para_nfa(nota: NotaFiscalXML) -> NFA:
+    """Converte NotaFiscalXML → NFA (compatível com o motor matemático existente)."""
+    return NFA(
+        numero        = nota.numero,
+        natureza      = nota.natureza or nota.tipo,
+        emissao       = nota.data_emissao,
+        valor_total   = nota.valor_total,
+        valor_icms    = nota.valor_imposto,
+        quantidade_total = sum(i.quantidade for i in nota.itens) if nota.itens else 0.0,
+        chave_acesso  = None,
+        local_emissao = f"{nota.municipio}/{nota.uf}",
+        remetente     = Parte(nome=nota.emitente_nome, cpf_cnpj=nota.emitente_doc,
+                              ie=nota.emitente_ie, municipio=nota.municipio),
+        destinatario  = Parte(nome=nota.tomador_nome, cpf_cnpj=nota.tomador_doc),
+    )
 
 
 def _formatar_documento(doc: str) -> str:
@@ -57,28 +75,57 @@ class _ThreadSafeTasksProxy:
 
 tasks_status: _ThreadSafeTasksProxy = _ThreadSafeTasksProxy()
 
-async def processar_lote_auditoria(task_id: str, files: List[UploadFile], client_name: str, client_cpf: str):
+async def processar_lote_auditoria(
+    task_id: str,
+    files: List[tuple],   # lista de (filename: str, content: bytes) — lidos na rota
+    client_name: str,
+    client_cpf: str,
+):
     """
     Processo em background seguindo a diretriz AudiOrg de escalabilidade.
+
+    Recebe os bytes já lidos pela rota para evitar problemas de lifecycle do UploadFile:
+    UploadFile pode ser fechado pelo ASGI framework antes que a background task execute.
     """
     db = SessionLocal()
     try:
         tasks_status[task_id] = {"status": "extraindo", "progress": 10}
-        
-        all_notas = []
-        temp_dir = tempfile.gettempdir()
-        
-        valor_total_lote = 0
-        for file in files:
-            file_path = os.path.join(temp_dir, file.filename)
-            with open(file_path, "wb") as buffer:
-                content = await file.read()
-                buffer.write(content)
-            
-            # Extracao
-            notas, _, _ = extrair_notas(file_path)
-            all_notas.extend(notas)
-            valor_total_lote += sum(n.valor_total for n in notas)
+
+        all_notas = []   # NFA (motor matemático)
+        notas_xml = []   # NotaFiscalXML (agentes IA via resumo)
+        temp_dir  = tempfile.gettempdir()
+
+        for filename, content in files:
+            ext = os.path.splitext(filename)[1].lower()
+
+            if ext == ".xml":
+                # ── Caminho XML ──────────────────────────────────────────
+                try:
+                    nota_xml = parse_xml(content, modo_resumo="resumido")
+                    notas_xml.append(nota_xml)
+                    all_notas.append(_xml_para_nfa(nota_xml))
+                    logger.info(f"XML processado: {filename} → {nota_xml.tipo} #{nota_xml.numero}")
+                except Exception as exc:
+                    logger.error(f"Falha ao parsear XML {filename}: {exc}")
+
+            else:
+                # ── Caminho PDF (legado) ─────────────────────────────────
+                file_path = os.path.join(temp_dir, filename)
+                with open(file_path, "wb") as buf:
+                    buf.write(content)
+                try:
+                    notas_pdf, _, _ = extrair_notas(file_path)
+                    all_notas.extend(notas_pdf)
+                except Exception as exc:
+                    logger.error(f"Falha ao extrair PDF {filename}: {exc}")
+
+        valor_total_lote = sum(n.valor_total for n in all_notas)
+
+        # Bloco de contexto XML para os agentes (adicional ao resumo do PDF)
+        contexto_xml = ""
+        if notas_xml:
+            contexto_xml = "\n\n=== DADOS XML (parsados diretamente) ===\n"
+            contexto_xml += resumo_lote_para_agentes(notas_xml, modo="resumido")
         
         tasks_status[task_id] = {"status": "processamento_quantitativo", "progress": 30}
         
@@ -111,7 +158,12 @@ async def processar_lote_auditoria(task_id: str, files: List[UploadFile], client
             "resumo_estatistico": resumo
         }
         
-        analise_state = rodar_auditoria_completa(all_notas, client_name, contexto_quant=contexto_quant)
+        analise_state = rodar_auditoria_completa(
+            all_notas,
+            client_name,
+            contexto_quant=contexto_quant,
+            contexto_xml=contexto_xml,
+        )
         veredito = analise_state.get('veredito_final', 'Veredito nao gerado.')
         
         # Fallback de Veredito (Resiliencia Squad Delta)
@@ -149,6 +201,8 @@ A analise qualitativa da Squad foi omitida para garantir a entrega imediata dos 
                 analise_ia=veredito,
                 nome_contribuinte=client_name,
                 cpf_contribuinte=client_cpf,
+                risco_nivel=dto_final.fraud_flag_level,
+                score_risco=float(dto_final.score_xgboost_final or 0),
             )
             logger.info(f"Relatorio PDF gerado: {pdf_path}")
         except Exception as e_pdf:

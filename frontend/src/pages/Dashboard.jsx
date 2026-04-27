@@ -6,6 +6,7 @@ import {
   TrendingUp, FileText, AlertTriangle, CheckCircle2, Search,
   Bell, Settings, BarChart3, Activity, Clock, Download,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import AuditoriaModule from './AuditoriaModule';
 import api from '../services/api';
 
@@ -444,6 +445,18 @@ function ClientesModule() {
 
 // ── RelatorioModule ────────────────────────────────────────────────────────────
 function RelatorioModule() {
+  const [laudos, setLaudos]   = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/auditoria/laudos')
+      .then(r => setLaudos(r.data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const comAlerta = laudos.filter(l => l.qtd_anomalias > 0).length;
+
   return (
     <div className="max-w-5xl space-y-5">
       <div>
@@ -453,9 +466,9 @@ function RelatorioModule() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: 'Laudos Gerados', value: '—', icon: FileText, color: 'bg-accent-50 text-accent-600' },
-          { label: 'Pendentes', value: '—', icon: Clock, color: 'bg-amber-50 text-amber-600' },
-          { label: 'Com Alerta', value: '—', icon: AlertTriangle, color: 'bg-red-50 text-red-600' },
+          { label: 'Laudos Gerados', value: loading ? '…' : laudos.length, icon: FileText, color: 'bg-accent-50 text-accent-600' },
+          { label: 'Pendentes',      value: '0',                            icon: Clock,        color: 'bg-amber-50 text-amber-600' },
+          { label: 'Com Alerta',     value: loading ? '…' : comAlerta,      icon: AlertTriangle, color: 'bg-red-50 text-red-600' },
         ].map((k, i) => (
           <div key={i} className="kpi-card">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${k.color}`}>
@@ -476,14 +489,47 @@ function RelatorioModule() {
             <Download size={13} /> Exportar CSV
           </button>
         </div>
-        <div className="flex flex-col items-center justify-center py-16 text-navy-400">
-          <BarChart3 size={40} className="mb-3 opacity-30" />
-          <p className="text-sm font-medium">Nenhum relatório gerado ainda</p>
-          <p className="text-xs mt-1">Realize uma auditoria para gerar o primeiro laudo.</p>
-          <Link to="/dashboard/auditoria" className="btn-primary mt-4 text-sm">
-            <FileSearch size={14} /> Iniciar Auditoria
-          </Link>
-        </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : laudos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-navy-400">
+            <BarChart3 size={40} className="mb-3 opacity-30" />
+            <p className="text-sm font-medium">Nenhum relatório gerado ainda</p>
+            <p className="text-xs mt-1">Realize uma auditoria para gerar o primeiro laudo.</p>
+            <Link to="/dashboard/auditoria" className="btn-primary mt-4 text-sm">
+              <FileSearch size={14} /> Iniciar Auditoria
+            </Link>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-bg text-navy-500 text-xs uppercase">
+              <tr>
+                <th className="px-5 py-3 text-left">#</th>
+                <th className="px-5 py-3 text-left">Data</th>
+                <th className="px-5 py-3 text-right">Notas</th>
+                <th className="px-5 py-3 text-right">Valor Total</th>
+                <th className="px-5 py-3 text-center">Anomalias</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {laudos.map(l => (
+                <tr key={l.id} className="hover:bg-bg transition-colors">
+                  <td className="px-5 py-3 font-mono text-navy-600">#{l.id}</td>
+                  <td className="px-5 py-3 text-navy-700">{l.data_auditoria ? new Date(l.data_auditoria).toLocaleString('pt-BR') : '—'}</td>
+                  <td className="px-5 py-3 text-right text-navy-700">{l.qtd_notas}</td>
+                  <td className="px-5 py-3 text-right text-navy-700">R$ {(l.valor_total || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</td>
+                  <td className="px-5 py-3 text-center">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${l.qtd_anomalias > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                      {l.qtd_anomalias > 0 ? `${l.qtd_anomalias} alerta(s)` : 'OK'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );
@@ -547,7 +593,26 @@ function AgenteModule() {
                 ${m.role === 'user'
                   ? 'bg-accent-600 text-white rounded-br-sm'
                   : 'bg-navy-50 text-navy-800 rounded-bl-sm border border-border'}`}>
-                {m.content}
+                {m.role === 'assistant' ? (
+                  <ReactMarkdown
+                    components={{
+                      h3: ({children}) => <p className="font-bold text-navy-900 mb-1">{children}</p>,
+                      strong: ({children}) => <strong className="font-semibold text-navy-900">{children}</strong>,
+                      em: ({children}) => <em className="italic">{children}</em>,
+                      p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                      ul: ({children}) => <ul className="list-disc list-inside space-y-0.5 mb-1">{children}</ul>,
+                      ol: ({children}) => <ol className="list-decimal list-inside space-y-0.5 mb-1">{children}</ol>,
+                      li: ({children}) => <li className="text-navy-700">{children}</li>,
+                      hr: () => <hr className="my-2 border-border" />,
+                      table: ({children}) => <table className="text-xs border-collapse w-full my-1">{children}</table>,
+                      th: ({children}) => <th className="border border-border px-2 py-0.5 bg-navy-100 font-semibold text-left">{children}</th>,
+                      td: ({children}) => <td className="border border-border px-2 py-0.5">{children}</td>,
+                      code: ({children}) => <code className="bg-navy-100 px-1 rounded text-xs font-mono">{children}</code>,
+                    }}
+                  >
+                    {m.content}
+                  </ReactMarkdown>
+                ) : m.content}
               </div>
             </div>
           ))}

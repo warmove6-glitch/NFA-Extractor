@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<NFSe versao="1.00" xmlns="http://www.sped.fazenda.gov.br/nfse">
+<infNFSe Id="NFS52115031239558194000180000000000486626023714913456">
+<xLocEmi>ITUMBIARA - GO</xLocEmi>
+<xLocPrestacao>ITUMBIARA - GO</xLocPrestacao>
+<nNFSe>4866</nNFSe>
+<cLocIncid>5211503</cLocIncid>
+<xLocIncid>ITUMBIARA - GO</xLocIncid>
+<xTribNac>Servico codigo 140101</xTribNac>
+<verAplic>1.00</verAplic>
+<ambGer>1</ambGer>
+<tpEmis>2</tpEmis>
+<cStat>100</cStat>
+<dhProc>2026-02-12T18:03:16-03:00</dhProc>
+<nDFSe>4866</nDFSe>
+<emit>
+  <CNPJ>39558194000180</CNPJ>
+  <IM>604394</IM>
+  <xNome>DIVISA TRUCK CENTER LTDA</xNome>
+  <xFant>DIVISA TRUCK CENTER</xFant>
+</emit>
+<valores>
+  <vCalcDR>0.00</vCalcDR>
+  <vBC>1240.00</vBC>
+  <pAliqAplic>3.00</pAliqAplic>
+  <vISSQN>37.20</vISSQN>
+  <vLiq>1240.00</vLiq>
+</valores>
+<DPS versao="1.00">
+  <infDPS Id="DPS521150323955819400018000001000000000004866">
+    <tpAmb>1</tpAmb>
+    <dhEmi>2026-02-12T18:03:16-03:00</dhEmi>
+    <verAplic>1.00</verAplic>
+    <serie>00001</serie>
+    <nDPS>4866</nDPS>
+    <dCompet>2026-02-12</dCompet>
+    <tpEmit>1</tpEmit>
+    <cLocEmi>5211503</cLocEmi>
+    <prest>
+      <CNPJ>39558194000180</CNPJ>
+      <IM>604394</IM>
+      <regTrib>
+        <opSimpNac>3</opSimpNac>
+        <regApTribSN>1</regApTribSN>
+        <regEspTrib>0</regEspTrib>
+      </regTrib>
+    </prest>
+    <toma>
+      <CNPJ>61411585000127</CNPJ>
+      <xNome>BOIVIP TRANSPORTE DE BOVINOS LTDA</xNome>
+    </toma>
+    <serv>
+      <cServ>
+        <cTribNac>140101</cTribNac>
+        <xDescServ>MANUTENCAO VEICULO PLACA EZU-3H53</xDescServ>
+      </cServ>
+    </serv>
+    <valores>
+      <vServPrest>
+        <vServ>1240.00</vServ>
+      </vServPrest>
+      <trib>
+        <tribMun>
+          <tribISSQN>1</tribISSQN>
+          <tpRetISSQN>1</tpRetISSQN>
+          <pAliq>3.00</pAliq>
+        </tribMun>
+      </trib>
+    </valores>
+  </infDPS>
+</DPS>
+</infNFSe>
+</NFSe>

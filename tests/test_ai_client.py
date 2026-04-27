@@ -142,21 +142,25 @@ class TestAnalisar:
             mock_ollama.assert_called_once()
             assert resultado == texto_ollama
 
-    def test_usa_claude_quando_disponivel(self, notas_simples):
-        """Se Claude retorna texto sem prefixo de erro, é usado diretamente."""
-        texto_claude = 'Análise detalhada via Claude Mock'
-        with patch('src.infrastructure.ai_client._analisar_claude', return_value=texto_claude):
+    def test_usa_swift_quando_disponivel(self, notas_simples):
+        """Se Swift responde sem prefixo de erro, é usado como motor primário."""
+        texto_swift = 'Análise detalhada via Swift Mock'
+        with patch('src.infrastructure.ai_client._swift_disponivel', return_value=True), \
+             patch('src.infrastructure.ai_client._analisar_swift', return_value=texto_swift) as mock_swift:
             resultado = analisar(notas_simples)
-            assert resultado == texto_claude
+            mock_swift.assert_called_once()
+            assert resultado == texto_swift
 
-    def test_usa_gemini_quando_claude_falha(self, notas_simples):
-        """Se Claude falha (prefixo [Claude), tenta Gemini."""
-        texto_gemini = 'Análise via Gemini Mock'
-        with patch('src.infrastructure.ai_client._analisar_claude', return_value='[Claude Inativo]'), \
-             patch('src.infrastructure.ai_client._analisar_gemini', return_value=texto_gemini) as mock_gemini:
+    def test_usa_ollama_quando_swift_falha(self, notas_simples):
+        """Se Swift falha (prefixo [Swift), cai no Ollama."""
+        texto_ollama = 'Análise via Ollama Mock'
+        with patch('src.infrastructure.ai_client._swift_disponivel', return_value=True), \
+             patch('src.infrastructure.ai_client._analisar_swift', return_value='[Swift Falhou: timeout]'), \
+             patch('src.infrastructure.ai_client._ollama_disponivel', return_value=True), \
+             patch('src.infrastructure.ai_client._analisar_ollama', return_value=texto_ollama) as mock_ollama:
             resultado = analisar(notas_simples)
-            mock_gemini.assert_called_once()
-            assert resultado == texto_gemini
+            mock_ollama.assert_called_once()
+            assert resultado == texto_ollama
 
     def test_resultado_e_string_nao_vazia(self, notas_simples):
         """Garante que o resultado final é sempre string não-vazia."""

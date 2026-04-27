@@ -9,6 +9,7 @@ class AgentState(TypedDict):
     notas: List[NFA]
     nome_contribuinte: str
     contexto_quant: dict
+    contexto_xml: str          # resumo estruturado das notas XML (vazio se só PDFs)
     analise_sigma: str
     analise_gama: str
     veredito_final: str
@@ -20,10 +21,15 @@ def node_sigma(state: AgentState):
     cq = state['contexto_quant']
     prompt_contexto = f"""
 GROUND TRUTH MATEMÁTICO (ANTIGRAVITY ENGINE):
-- Score de Risco (Bayesiano): {cq['risk_score']}
-- Nível de Fraude: {cq['fraud_level']}
-- Resumo do Lote: {json.dumps(cq['resumo_estatistico'], indent=2, ensure_ascii=False)}
+- Score de Risco (Bayesiano): {cq.get('risk_score', 'N/A')}
+- Nível de Fraude: {cq.get('fraud_level', 'N/A')}
+- Resumo do Lote: {json.dumps(cq.get('resumo_estatistico', {}), indent=2, ensure_ascii=False)}
 """
+    # Enriquece com dados XML estruturados, se disponíveis
+    xml_ctx = state.get('contexto_xml', '')
+    if xml_ctx:
+        prompt_contexto += f"\n{xml_ctx}"
+
     res = analisar([], system_override=SYSTEM_SIGMA + "\n" + prompt_contexto, nome_produtor=state['nome_contribuinte'])
     return {"analise_sigma": res, "historico": ["Sigma concluiu analise quantitativa."]}
 
@@ -62,16 +68,31 @@ def build_graph():
     
     return workflow.compile()
 
-def rodar_auditoria_completa(notas: List[NFA], nome_contribuinte: str, contexto_quant: dict = None):
+def rodar_auditoria_completa(
+    notas: List[NFA],
+    nome_contribuinte: str,
+    contexto_quant: dict = None,
+    contexto_xml: str = "",
+) -> dict:
+    """
+    Executa o workflow de auditoria multiagente.
+
+    Args:
+        notas:            lista de NFA (PDFs + XMLs convertidos)
+        nome_contribuinte: nome do cliente
+        contexto_quant:   saída da AntiGravityQuantEngine (scores, flags)
+        contexto_xml:     resumo textual das notas XML para enriquecer Sigma
+    """
     app = build_graph()
     initial_state = {
         "notas": notas,
         "nome_contribuinte": nome_contribuinte,
         "contexto_quant": contexto_quant or {},
+        "contexto_xml": contexto_xml,
         "analise_sigma": "",
         "analise_gama": "",
         "veredito_final": "",
-        "historico": []
+        "historico": [],
     }
     return app.invoke(initial_state)
 

@@ -1,7 +1,6 @@
 """Testes para src/application/reports/ir_report.py"""
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -44,61 +43,40 @@ def notas_ir() -> list:
 # ── Testes ───────────────────────────────────────────────────────────────────
 
 class TestGerarPdfIr:
-    def test_gera_arquivo_pdf(self, notas_ir):
+    def test_gera_arquivo_pdf(self, notas_ir, tmp_path):
         """gerar_pdf_ir deve criar um arquivo PDF no caminho indicado."""
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            path = tmp.name
-        try:
-            gerar_pdf_ir(notas_ir, path)
-            assert os.path.exists(path), "PDF não foi criado"
-            assert os.path.getsize(path) > 0, "PDF gerado está vazio"
-        finally:
-            if os.path.exists(path):
-                os.remove(path)
+        path = str(tmp_path / "report.pdf")
+        gerar_pdf_ir(notas_ir, path)
+        
+        assert os.path.exists(path), "PDF não foi criado"
+        assert os.path.getsize(path) > 0, "PDF gerado está vazio"
 
-    def test_pdf_começa_com_header_correto(self, notas_ir):
+    def test_pdf_começa_com_header_correto(self, notas_ir, tmp_path):
         """PDF gerado deve começar com o magic bytes '%PDF-'."""
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            path = tmp.name
-        try:
-            gerar_pdf_ir(notas_ir, path)
-            with open(path, "rb") as f:
-                header = f.read(5)
-            assert header == b"%PDF-", f"Header inválido: {header}"
-        finally:
-            if os.path.exists(path):
-                os.remove(path)
+        path = str(tmp_path / "report.pdf")
+        gerar_pdf_ir(notas_ir, path)
+        
+        with open(path, "rb") as f:
+            header = f.read(5)
+        assert header == b"%PDF-", f"Header inválido: {header}"
 
-    def test_lista_vazia_levanta_value_error(self):
+    def test_lista_vazia_levanta_value_error(self, tmp_path):
         """gerar_pdf_ir com lista vazia deve levantar ValueError (validação da função)."""
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            path = tmp.name
-        try:
-            with pytest.raises(ValueError, match="nota fiscal"):
-                gerar_pdf_ir([], path)
-        finally:
-            if os.path.exists(path):
-                os.remove(path)
+        path = str(tmp_path / "report.pdf")
+        with pytest.raises(ValueError, match="nota fiscal"):
+            gerar_pdf_ir([], path)
 
-    def test_tamanho_minimo_pdf(self, notas_ir):
+    def test_tamanho_minimo_pdf(self, notas_ir, tmp_path):
         """PDF gerado deve ter pelo menos 3KB."""
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            path = tmp.name
-        try:
-            gerar_pdf_ir(notas_ir, path)
-            size = os.path.getsize(path)
-            assert size >= 3000, f"PDF muito pequeno: {size} bytes"
-        finally:
-            if os.path.exists(path):
-                os.remove(path)
+        path = str(tmp_path / "report.pdf")
+        gerar_pdf_ir(notas_ir, path)
+        
+        size = os.path.getsize(path)
+        assert size >= 3000, f"PDF muito pequeno: {size} bytes"
 
-    def test_ano_padrao_aceito(self, notas_ir):
+    def test_ano_padrao_aceito(self, notas_ir, tmp_path):
         """gerar_pdf_ir deve aceitar ano como string via saida path."""
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-            path = tmp.name
-        try:
-            gerar_pdf_ir(notas_ir, saida=path)
-            assert os.path.exists(path)
-        finally:
-            if os.path.exists(path):
-                os.remove(path)
+        path = str(tmp_path / "report.pdf")
+        gerar_pdf_ir(notas_ir, saida=path)
+        
+        assert os.path.exists(path)

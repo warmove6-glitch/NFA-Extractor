@@ -1,13 +1,45 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR" translate="no">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="ORGATEC Sovereign Shield - Auditoria Forense e Inteligência Tributária" />
+    <meta name="google" content="notranslate" />
     <title>ORGATEC | Sovereign Shield</title>
   </head>
   <body>
+    <!-- Remove elementos <font> injetados pelo Google Translate antes que o React reconcilie -->
+    <script>
+      (function () {
+        function limparFonts(root) {
+          root.querySelectorAll('font').forEach(function (font) {
+            var p = font.parentNode;
+            if (!p) return;
+            while (font.firstChild) p.insertBefore(font.firstChild, font);
+            p.removeChild(font);
+          });
+        }
+        var obs = new MutationObserver(function (mutations) {
+          mutations.forEach(function (m) {
+            m.addedNodes.forEach(function (n) {
+              if (n.nodeName === 'FONT') {
+                var p = n.parentNode;
+                if (!p) return;
+                while (n.firstChild) p.insertBefore(n.firstChild, n);
+                try { p.removeChild(n); } catch (_) {}
+              } else if (n.nodeType === 1) {
+                limparFonts(n);
+              }
+            });
+          });
+        });
+        document.addEventListener('DOMContentLoaded', function () {
+          limparFonts(document.body);
+          obs.observe(document.body, { childList: true, subtree: true });
+        });
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx" fetchpriority="high"></script>
   </body>

@@ -93,7 +93,7 @@ export default function LoginPage() {
 
       {/* Painel direito — formulário */}
       <div className="flex-1 flex items-center justify-center bg-navy-50 px-6 py-12">
-        <div className="w-full max-w-sm animate-fade-in">
+        <div className="w-full max-w-sm">
 
           {/* Header mobile */}
           <div className="lg:hidden flex items-center gap-2 mb-8">

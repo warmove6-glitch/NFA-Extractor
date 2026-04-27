@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Relatório de Testes — NFA Extractor</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f172a; color: #e2e8f0; font-family: "Segoe UI", sans-serif; padding: 32px; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    .sub { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+    .badge { display: inline-block; padding: 6px 18px; border-radius: 9999px; font-size: 15px; font-weight: 700; background: #22c55e22; color: #22c55e; border: 1px solid #22c55e44; margin-bottom: 24px; }
+    .stats { display: flex; gap: 16px; margin-bottom: 28px; }
+    .stat { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px 24px; }
+    .stat .num { font-size: 28px; font-weight: 800; color: #22c55e; }
+    .stat.fail .num { color: #ef4444; }
+    .stat .lbl { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .terminal { background: #020617; border: 1px solid #1e293b; border-radius: 12px; padding: 24px; font-family: "Cascadia Code", "Consolas", monospace; font-size: 13px; line-height: 1.7; overflow-x: auto; white-space: pre; }
+    .secao { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #475569; text-transform: uppercase; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <h1>🧪 Relatório de Testes — NFA Extractor</h1>
+  <div class="sub">Parser XML Universal · NFSe · NF-e · NFA · 26/04/2026 18:48:46</div>
+  <div class="badge">34 PASSOU | 0 FALHOU</div>
+  <div class="stats">
+    <div class="stat"><div class="num">34</div><div class="lbl">Testes passaram</div></div>
+    <div class="stat fail"><div class="num">0</div><div class="lbl">Testes falharam</div></div>
+    <div class="stat"><div class="num">4</div><div class="lbl">Classes de teste</div></div>
+    <div class="stat"><div class="num">0.13s</div><div class="lbl">Tempo total</div></div>
+  </div>
+  <div class="secao">Saída do pytest</div>
+  <div class="terminal"><span style="color:#94a3b8">============================= test session starts =============================</span><br><span style="color:#94a3b8">collecting ... collected 34 items</span><br><span style="color:#94a3b8"></span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_tipo_detectado PASSED           [  2%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_campos_obrigatorios PASSED      [  5%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_numero_correto PASSED           [  8%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_data_emissao PASSED             [ 11%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_municipio_uf PASSED             [ 14%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_emitente PASSED                 [ 17%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_regime_simples PASSED           [ 20%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_tomador PASSED                  [ 23%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_valores_issqn PASSED            [ 26%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_codigo_fiscal PASSED            [ 29%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_tokens_compactos PASSED         [ 32%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_aceita_bytes_e_string PASSED    [ 35%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFSe::test_assinatura_x509_removida PASSED [ 38%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_tipo_detectado PASSED            [ 41%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_campos_obrigatorios PASSED       [ 44%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_numero_e_serie PASSED            [ 47%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_data_emissao PASSED              [ 50%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_emitente PASSED                  [ 52%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_destinatario PASSED              [ 55%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_natureza_cfop PASSED             [ 58%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_icms PASSED                      [ 61%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFe::test_itens_extraidos PASSED           [ 64%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFA::test_tipo_detectado PASSED            [ 67%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFA::test_campos_obrigatorios PASSED       [ 70%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFA::test_numero PASSED                    [ 73%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFA::test_emitente_cpf PASSED              [ 76%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestNFA::test_valor_e_icms PASSED              [ 79%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestRobustez::test_xml_invalido_levanta_value_error PASSED [ 82%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestRobustez::test_lote_vazio PASSED           [ 85%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestRobustez::test_lote_com_multiplos_tipos PASSED [ 88%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestRobustez::test_resumo_lote_contem_totais PASSED [ 91%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestRobustez::test_lote_ignora_xml_invalido PASSED [ 94%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestRobustez::test_resumo_auditoria_modo_completo PASSED [ 97%]</span><br><span style="color:#22c55e">✅ tests/test_xml_parser.py::TestRobustez::test_encoding_utf8 PASSED        [100%]</span><br><span style="color:#94a3b8"></span><br><span style="color:#22c55e">🎯 ============================= 34 passed in 0.11s ==============================</span></div>
+</body>
+</html>
