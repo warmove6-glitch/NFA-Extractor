@@ -1,22 +1,51 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Upload, FileText, CheckCircle, AlertTriangle,
-  Loader2, Clock, X, Download, FileSearch, Shield,
+  Loader2, Clock, X, Download, FileSearch, Shield, FileCode,
 } from 'lucide-react';
 import api from '../services/api';
 
+// Tipos aceitos
+const ACCEPT_TYPES  = '.pdf,.xml';
+const MIME_PDF      = 'application/pdf';
+const MIME_XML_1    = 'text/xml';
+const MIME_XML_2    = 'application/xml';
+
+const isXML = f => f.name?.toLowerCase().endsWith('.xml') || f.type === MIME_XML_1 || f.type === MIME_XML_2;
+const isPDF = f => f.name?.toLowerCase().endsWith('.pdf') || f.type === MIME_PDF;
+const isAceito = f => isPDF(f) || isXML(f);
+
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_CYCLES  = 450; // 15 min
+
+// ── Persistência leve via sessionStorage (sobrevive a crashes do React/Translate) ──
+const SS_TASK = 'aud_task_id';
+const SS_PHASE = 'aud_phase';
+
+function ssGet(key, fallback) {
+  try { return sessionStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
+function ssSet(key, val) {
+  try { val == null ? sessionStorage.removeItem(key) : sessionStorage.setItem(key, val); } catch {}
+}
 
 export default function AuditoriaModule() {
   const [clientes, setClientes]   = useState([]);
   const [clienteId, setClienteId] = useState('');
   const [files, setFiles]         = useState([]);
-  const [taskId, setTaskId]       = useState(null);
-  const [phase, setPhase]         = useState('idle'); // idle|uploading|processing|completed|error|timeout
+  const [taskId, setTaskId]       = useState(() => ssGet(SS_TASK, null));
+  const [phase, setPhase]         = useState(() => {
+    const p = ssGet(SS_PHASE, 'idle');
+    // Só retoma se estava em processamento — outros estados requerem interação
+    return (p === 'processing') ? 'processing' : 'idle';
+  });
   const [progress, setProgress]   = useState({ pct: 0, label: '', resultado: '' });
   const [apiError, setApiError]   = useState('');
   const dropRef = useRef(null);
+
+  // Wrappers que sincronizam com sessionStorage
+  const setTaskIdSS = (id) => { setTaskId(id); ssSet(SS_TASK, id); };
+  const setPhaseSS  = (p)  => { setPhase(p);   ssSet(SS_PHASE, p); };
 
   useEffect(() => {
     api.get('/clientes/').then(r => setClientes(r.data)).catch(() => {});
@@ -28,7 +57,7 @@ export default function AuditoriaModule() {
     const prevent = e => e.preventDefault();
     const drop = e => {
       e.preventDefault();
-      const dropped = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf');
+      const dropped = Array.from(e.dataTransfer.files).filter(isAceito);
       setFiles(prev => [...prev, ...dropped]);
     };
     zone.addEventListener('dragover', prevent);
@@ -40,32 +69,59 @@ export default function AuditoriaModule() {
     if (!taskId || phase !== 'processing') return;
     let cycles = 0;
     const interval = setInterval(async () => {
-      if (++cycles > POLL_MAX_CYCLES) { clearInterval(interval); setPhase('timeout'); return; }
+      if (++cycles > POLL_MAX_CYCLES) { clearInterval(interval); setPhaseSS('timeout'); return; }
       try {
         const { data } = await api.get(`/auditoria/status/${taskId}`);
         setProgress({ pct: data.progress ?? 0, label: (data.status ?? '').replace(/_/g, ' '), resultado: data.resultado ?? '' });
-        if (data.status === 'concluido') { clearInterval(interval); setPhase('completed'); }
-        if (data.status === 'erro')      { clearInterval(interval); setPhase('error'); setApiError(data.erro ?? 'Erro desconhecido.'); }
-      } catch { /* ignora erros transientes */ }
+        if (data.status === 'concluido') { clearInterval(interval); setPhaseSS('completed'); }
+        if (data.status === 'erro')      { clearInterval(interval); setPhaseSS('error'); setApiError(data.erro ?? 'Erro desconhecido.'); }
+      } catch (err) {
+        // 404 = task não existe mais no backend (servidor reiniciado) → aborta
+        if (err.response?.status === 404) {
+          clearInterval(interval);
+          setPhaseSS('error');
+          setApiError('Tarefa não encontrada — o servidor pode ter sido reiniciado. Inicie uma nova auditoria.');
+        }
+        // Outros erros transientes: ignora e continua polling
+      }
     }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [taskId, phase]);
 
+  const handleDownload = async () => {
+    if (!taskId) return;
+    try {
+      const response = await api.get(`/auditoria/download/${taskId}`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Laudo_${taskId.slice(0, 8)}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setApiError('Erro ao baixar relatório: ' + (err.response?.data?.detail || err.message));
+    }
+  };
+
   const handleUpload = async () => {
     if (!files.length || !clienteId) return;
-    setPhase('uploading'); setApiError('');
+    setPhaseSS('uploading'); setApiError('');
     const formData = new FormData();
     files.forEach(f => formData.append('files', f));
     try {
       const res = await api.post(`/auditoria/upload/${clienteId}`, formData);
-      setTaskId(res.data.task_id); setPhase('processing');
+      setTaskIdSS(res.data.task_id); setPhaseSS('processing');
     } catch (err) {
-      setApiError(err.response?.data?.detail || 'Erro ao iniciar auditoria.'); setPhase('error');
+      setApiError(err.response?.data?.detail || 'Erro ao iniciar auditoria.'); setPhaseSS('error');
     }
   };
 
   const reset = () => {
-    setFiles([]); setTaskId(null); setPhase('idle');
+    setFiles([]); setTaskIdSS(null); setPhaseSS('idle');
     setProgress({ pct: 0, label: '', resultado: '' }); setApiError('');
   };
 
@@ -127,20 +183,30 @@ export default function AuditoriaModule() {
                 <Upload size={22} className="text-navy-400" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-navy-700">Arraste os PDFs aqui</p>
+                <p className="text-sm font-semibold text-navy-700">Arraste os arquivos aqui</p>
                 <p className="text-xs text-navy-400 mt-0.5">ou clique para selecionar</p>
               </div>
-              <span className="badge badge-gray">Somente .PDF</span>
+              <div className="flex gap-1.5">
+                <span className="badge badge-blue">PDF</span>
+                <span className="badge badge-green">XML</span>
+              </div>
+              <p className="text-[10px] text-navy-400">NFSe · NF-e · NFA Agropecuária</p>
             </div>
-            <input id="file-input" type="file" multiple accept=".pdf" className="hidden"
-              onChange={e => setFiles(prev => [...prev, ...Array.from(e.target.files)])} />
+            <input id="file-input" type="file" multiple accept={ACCEPT_TYPES} className="hidden"
+              onChange={e => setFiles(prev => [...prev, ...Array.from(e.target.files).filter(isAceito)])} />
           </div>
 
           {/* Lista de arquivos */}
           {files.length > 0 && (
             <div className="card overflow-hidden">
               <div className="px-4 py-2.5 border-b border-border bg-navy-50 flex items-center justify-between">
-                <span className="text-xs font-semibold text-navy-600">{files.length} arquivo(s)</span>
+                <span className="text-xs font-semibold text-navy-600">
+                  {files.length} arquivo(s)
+                  {' · '}
+                  <span className="text-accent-600">{files.filter(isPDF).length} PDF</span>
+                  {' · '}
+                  <span className="text-emerald-600">{files.filter(isXML).length} XML</span>
+                </span>
                 <button onClick={() => setFiles([])} className="text-xs text-red-400 hover:text-red-600 transition-colors cursor-pointer">
                   Limpar todos
                 </button>
@@ -148,8 +214,13 @@ export default function AuditoriaModule() {
               <div className="divide-y divide-border max-h-48 overflow-y-auto">
                 {files.map((f, i) => (
                   <div key={i} className="flex items-center gap-2.5 px-4 py-2.5">
-                    <FileText size={14} className="text-accent-500 shrink-0" />
+                    {isXML(f)
+                      ? <FileCode size={14} className="text-emerald-500 shrink-0" />
+                      : <FileText size={14} className="text-accent-500 shrink-0" />}
                     <span className="text-xs text-navy-700 truncate flex-1">{f.name}</span>
+                    <span className={`text-[10px] font-medium shrink-0 ${isXML(f) ? 'text-emerald-500' : 'text-navy-400'}`}>
+                      {isXML(f) ? 'XML' : 'PDF'}
+                    </span>
                     <span className="text-[10px] text-navy-400 shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
                     <button onClick={() => setFiles(fs => fs.filter((_, j) => j !== i))}
                       className="text-navy-300 hover:text-red-400 transition-colors cursor-pointer">
@@ -251,11 +322,10 @@ export default function AuditoriaModule() {
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <a href={`${api.defaults.baseURL}/auditoria/download/${taskId}`}
-                    target="_blank" rel="noopener noreferrer"
+                  <button onClick={handleDownload}
                     className="btn-primary flex-1 justify-center">
                     <Download size={14} /> Baixar Laudo PDF
-                  </a>
+                  </button>
                   <button className="btn-secondary" onClick={reset}>Nova auditoria</button>
                 </div>
               </div>
