@@ -4,10 +4,8 @@ import logging
 import threading
 from typing import Any, List
 from fastapi import UploadFile  # noqa: F401 (mantido para compatibilidade de imports externos)
-from src.domain.extractor import extrair_notas, NFA, Parte
-from src.domain.xml_parser import parse_xml, resumo_lote_para_agentes, NotaFiscalXML
-from src.application.analytics_engine import processar_para_dataframe
-from src.domain.agents_engine import rodar_auditoria_completa
+from src.domain.extractor import extrair_notas, NFA, Parte, resumo_geral
+from src.domain.xml_parser import parse_xml, NotaFiscalXML
 from src.infrastructure.ai_client import analisar_producao
 from src.application.reports.pdf_report import gerar_pdf
 from src.infrastructure.database_v2 import SessionLocal, Laudo
@@ -124,9 +122,6 @@ async def processar_lote_auditoria(
 
         tasks_status[task_id] = {"status": "processamento_quantitativo", "progress": 30}
 
-        # Ground Truth Simplificado (sem XGBoost — muito lento em produção)
-        from src.domain.extractor import resumo_geral
-
         resumo = resumo_geral(all_notas, nome_contribuinte=client_name)
 
         # Score simplificado: baseado apenas em análise de risco qualitativa
@@ -136,11 +131,6 @@ async def processar_lote_auditoria(
         logger.info(f"GROUND TRUTH SIMPLIFICADO: Valor Total {valor_total_lote}, {len(all_notas)} notas")
         
         tasks_status[task_id] = {"status": "analisando_ia", "progress": 50}
-
-
-        # ─── MODO PRODUÇÃO: Claude Vision + Fallback Local ─────────────────
-        # Hierarquia: Claude (primário) → Swift (local) → Ollama → KB
-        # Benefício: 95% acurácia com 100% confiabilidade
 
         def callback_progresso(texto):
             """Atualizar progresso em tempo real durante análise."""
@@ -153,26 +143,6 @@ async def processar_lote_auditoria(
             nome_produtor=client_name
         )
 
-        # Validação do resultado
-        if "[Claude Falhou" in veredito and "[Swift" not in veredito:
-            # Se Claude falhou E Swift não foi usado, ativar contingência
-            logger.warning("Falha na análise primária. Ativando parecer de contingência.")
-            veredito = f"""
-### PARECER TECNICO DE CONTINGENCIA (SQUAD ANTIGRAVITY)
-**PROTOCOLO:** SOBERANO - MODO OFF-GRID
-**STATUS:** IA CLOUD INDISPONIVEL (QUOTA EXCEDIDA)
-
-**ANALISE QUANTITATIVA (GROUND TRUTH):**
-- **Score de Risco Matematico:** {dto_final.score_xgboost_final}
-- **Nivel de Fraude Detectado:** {dto_final.fraud_flag_level}
-- **Veredito do Motor:** O sistema identificou inconsistencias que resultaram em um score de risco. 
-A analise qualitativa da Squad foi omitida para garantir a entrega imediata dos dados numericos.
-
-**DADOS DO LOTE AUDITADO:**
-- Volume de Notas: {len(all_notas)}
-- Montante Total: R$ {valor_total_lote:,.2f}
-"""
-
 
         
         # Geracao de Relatorio PDF (AudiOrg Sovereign)
@@ -182,7 +152,6 @@ A analise qualitativa da Squad foi omitida para garantir a entrega imediata dos 
         os.makedirs(os.path.join("data", "laudos"), exist_ok=True)
         
         try:
-            from src.application.reports.pdf_report import gerar_pdf
             gerar_pdf(
                 notas=all_notas,
                 saida=pdf_path,
