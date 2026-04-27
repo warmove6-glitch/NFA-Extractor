@@ -2,6 +2,7 @@ import os
 import tempfile
 import logging
 import threading
+import time
 from typing import Any, List
 from fastapi import UploadFile  # noqa: F401 (mantido para compatibilidade de imports externos)
 from src.domain.extractor import extrair_notas, NFA, Parte, resumo_geral
@@ -11,6 +12,15 @@ from src.application.reports.pdf_report import gerar_pdf
 from src.infrastructure.database_v2 import SessionLocal, Laudo
 
 logger = logging.getLogger(__name__)
+_timer_start = None
+
+def _log_tempo(stage: str):
+    """Log tempo decorrido desde o início."""
+    global _timer_start
+    if _timer_start is None:
+        _timer_start = time.time()
+    elapsed = time.time() - _timer_start
+    logger.info(f"⏱️ [{stage}] {elapsed:.1f}s")
 
 
 def _xml_para_nfa(nota: NotaFiscalXML) -> NFA:
@@ -88,7 +98,10 @@ async def processar_lote_auditoria(
     UploadFile pode ser fechado pelo ASGI framework antes que a background task execute.
     """
     db = SessionLocal()
+    global _timer_start
+    _timer_start = time.time()
     try:
+        _log_tempo("INÍCIO")
         tasks_status[task_id] = {"status": "extraindo", "progress": 10}
 
         all_notas = []   # NFA (motor matemático)
@@ -119,11 +132,13 @@ async def processar_lote_auditoria(
                 except Exception as exc:
                     logger.error(f"Falha ao extrair PDF {filename}: {exc}")
 
+        _log_tempo("EXTRAÇÃO COMPLETA")
         valor_total_lote = sum(n.valor_total for n in all_notas)
 
         tasks_status[task_id] = {"status": "processamento_quantitativo", "progress": 30}
 
         resumo = resumo_geral(all_notas, nome_contribuinte=client_name)
+        _log_tempo("RESUMO GERAL")
 
         # Score simplificado: baseado apenas em análise de risco qualitativa
         score_risco = 0.5  # Neutral (será refinado pela IA)
@@ -143,9 +158,8 @@ async def processar_lote_auditoria(
             callback=callback_progresso,
             nome_produtor=client_name
         )
+        _log_tempo("CLAUDE ANALYSIS")
 
-
-        
         # Geracao de Relatorio PDF (AudiOrg Sovereign)
         tasks_status[task_id] = {"status": "gerando_pdf", "progress": 80}
         pdf_filename = f"Laudo_{task_id[:8]}.pdf"
@@ -163,6 +177,7 @@ async def processar_lote_auditoria(
                 score_risco=score_risco,
                 modo_relatorio=modo_relatorio,
             )
+            _log_tempo("PDF GERADO")
             logger.info(f"Relatorio PDF gerado: {pdf_path}")
         except Exception as e_pdf:
             logger.error(f"Erro critico ao gerar PDF: {e_pdf}")
@@ -202,6 +217,7 @@ async def processar_lote_auditoria(
         db.add(novo_laudo)
         db.commit()
 
+        _log_tempo("PERSISTÊNCIA BD")
         logger.info(f"[SUCESSO] Auditoria {task_id} concluída com IA: {ia_utilizada}")
 
         tasks_status[task_id] = {
@@ -210,6 +226,7 @@ async def processar_lote_auditoria(
             "resultado": veredito,
             "total_notas": len(all_notas)
         }
+        _log_tempo("FIM")
 
     except Exception as e:
         logger.error(f"Erro no processamento da auditoria {task_id}: {e}")
