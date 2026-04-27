@@ -81,11 +81,10 @@ class TestClaudeVision:
 class TestAnalisarProducao:
     """Testes para modo produção (Claude + fallback)."""
 
-    def test_analisar_producao_prioriza_claude(self, notas_teste):
-        """Quando Claude disponível, deve ser usado como primário."""
+    def test_analisar_producao_sucesso_com_claude(self, notas_teste):
+        """Quando Claude disponível e responde, retorna análise."""
         with patch('src.infrastructure.ai_client._carregar_env') as mock_env, \
-             patch('src.infrastructure.ai_client._analisar_claude', return_value='Análise Claude OK') as mock_claude, \
-             patch('src.infrastructure.ai_client._swift_disponivel', return_value=True):
+             patch('src.infrastructure.ai_client._analisar_claude', return_value='Análise Claude OK') as mock_claude:
 
             mock_env.side_effect = lambda x: 'sk-ant-test' if x == 'ANTHROPIC_API_KEY' else ''
 
@@ -94,14 +93,9 @@ class TestAnalisarProducao:
             assert 'Análise Claude OK' in resultado
             mock_claude.assert_called_once()
 
-    def test_analisar_producao_fallback_swift(self, notas_teste):
-        """Quando Claude falha, fallback para Swift."""
-        with patch('src.infrastructure.ai_client._carregar_env', return_value=''), \
-             patch('src.infrastructure.ai_client._swift_disponivel', return_value=True), \
-             patch('src.infrastructure.ai_client._analisar_swift', return_value='Análise Swift OK') as mock_swift:
-
+    def test_analisar_producao_falha_sem_claude(self, notas_teste):
+        """Quando Claude não disponível, retorna erro."""
+        with patch('src.infrastructure.ai_client._carregar_env', return_value=''):
             resultado = analisar_producao(notas_teste)
-
-            assert 'Análise Swift OK' in resultado
-            mock_swift.assert_called_once()
+            assert '[ERRO]' in resultado
 

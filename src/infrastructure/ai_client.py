@@ -28,9 +28,6 @@ def _carregar_env(chave: str) -> str:
 # MODELOS (PRODUÇÃO)
 CLAUDE_MODEL = 'claude-sonnet-4-6'
 
-# Motor local ms-swift (OpenAI-compatible — porta padrão do swift deploy)
-SWIFT_URL    = 'http://localhost:8000/v1'
-SWIFT_MODEL  = 'Qwen/Qwen2.5-7B-Instruct'  # Substituível via SWIFT_MODEL no config.env
 
 
 
@@ -57,13 +54,6 @@ def _gemini_disponivel() -> bool:
     return bool(_carregar_env('GOOGLE_API_KEY'))
 
 
-def _swift_disponivel() -> bool:
-    url = _carregar_env('SWIFT_URL') or SWIFT_URL
-    try:
-        res = requests.get(f"{url}/models", timeout=2)
-        return res.status_code == 200
-    except:
-        return False
 
 
 # ── LOGICA DE LOTE (CHUNKS) ────────────────────────────────────────────────
@@ -223,38 +213,6 @@ Retorne em JSON estruturado.
         return {"status": "erro", "mensagem": f"Erro: {e}"}
 
 
-def _analisar_swift(prompt: str, sys: str, callback=None) -> str:
-    """Motor local ms-swift — API compatível com OpenAI (swift deploy)."""
-    try:
-        from openai import OpenAI
-    except ImportError:
-        logger.error("Swift: pacote 'openai' não instalado. Execute: pip install openai")
-        return "[Swift Inativo: pacote 'openai' não instalado]"
-
-    url    = _carregar_env('SWIFT_URL')   or SWIFT_URL
-    modelo = _carregar_env('SWIFT_MODEL') or SWIFT_MODEL
-
-    try:
-        cliente = OpenAI(api_key='EMPTY', base_url=url)
-        res = ""
-        stream = cliente.chat.completions.create(
-            model=modelo,
-            messages=[
-                {"role": "system", "content": sys},
-                {"role": "user",   "content": prompt},
-            ],
-            max_tokens=4096,
-            stream=True,
-        )
-        for chunk in stream:
-            token = (chunk.choices[0].delta.content or "") if chunk.choices else ""
-            res += token
-            if callback and token:
-                callback(token)
-        return res
-    except Exception as e:
-        logger.error(f"Swift: Erro — {e}")
-        return f"[Swift Falhou: {e}]"
 
 
 
@@ -264,13 +222,11 @@ def _analisar_swift(prompt: str, sys: str, callback=None) -> str:
 def analisar_producao(notas: list[NFA], callback=None, system_override: str = None,
                      nome_produtor: str = "") -> str:
     """
-    Modo PRODUÇÃO (2026): Claude com fallback Swift.
+    Modo PRODUÇÃO (2026): Claude Vision apenas.
 
-    Hierarquia:
-    1. Claude (15s timeout) — qualidade máxima
-    2. Swift local (10s timeout) — fallback rápido
+    Motor: Claude (15s timeout) — qualidade máxima
 
-    Nota: KB Local e Ollama removidos para foco em motores especializados.
+    Nota: Swift e KB Local removidos para máxima simplicidade e custo controlado.
     """
     import threading
     import time
@@ -304,114 +260,10 @@ def analisar_producao(notas: list[NFA], callback=None, system_override: str = No
             res = resultado['res']
             if "[Claude Falhou" not in res and "[Claude Error" not in res:
                 return res
-            else:
-                if callback: callback("[!] Claude falhou — fallback ativado\n")
 
-    # 2. SWIFT (FALLBACK LOCAL) — timeout de 10s
-    if _swift_disponivel():
-        if callback: callback("[FALLBACK] Swift local (rápido)...\n")
+        logger.error("Análise falhou: Claude indisponível.")
+        return "[ERRO] Análise indisponível: Claude não respondeu."
 
-        resultado = {'res': None, 'done': False}
+    logger.error("Análise falhou: Claude API key não configurada.")
+    return "[ERRO] Claude não disponível — configure ANTHROPIC_API_KEY."
 
-        def executar_swift():
-            try:
-                resultado['res'] = _analisar_swift(prompt, sys, callback)
-                resultado['done'] = True
-            except Exception as e:
-                resultado['res'] = f"[Swift Error: {e}]"
-                resultado['done'] = True
-
-        thread = threading.Thread(target=executar_swift, daemon=True)
-        thread.start()
-        thread.join(timeout=10)
-
-        if resultado['done'] and resultado['res']:
-            res = resultado['res']
-            if "[Swift" not in res:
-                return res
-
-    # Se ambos falharem, retornar aviso
-    logger.error("Análise falhou: Claude e Swift indisponíveis.")
-    return "[ERRO] Análise indisponível: Claude e Swift não responderam."
-
-# ── PIPELINE EM LOTES (TURBO) ──────────────────────────────────────────────
-
-# ── FUNÇÃO perguntar() — Endpoint /agente/chat ─────────────────────────────
-
-def perguntar(
-    notas: list,
-    pergunta: str,
-    context_ia: str = "",
-    callback=None,
-) -> str:
-    """
-    Responde perguntas sobre NFA, direito tributário e auditoria fiscal.
-
-    Cascata de fallback (mais rápido → mais completo):
-    1. KB Local (offline, instantâneo) — responde perguntas conhecidas
-    2. Cloud (Claude/Gemini/Azure) — para perguntas complexas / fora da KB
-    3. Ollama local — se configurado e disponível
-
-    Parâmetros:
-        notas       : lista de NFA para contexto (pode ser vazia)
-        pergunta    : texto da pergunta do usuário
-        context_ia  : contexto adicional (laudos anteriores, etc.)
-        callback    : função chamada com tokens parciais (streaming opcional)
-    """
-    if not pergunta or not pergunta.strip():
-        return "Por favor, faça uma pergunta sobre NFA, ICMS, FUNRURAL ou direito tributário."
-
-    # 1. Tenta KB Local primeiro — é instantâneo e não falha
-    from src.infrastructure.local_kb import buscar as kb_buscar, responder as kb_responder
-    resultados_kb = kb_buscar(pergunta, top_k=1, min_score=0.07)
-
-    if resultados_kb:
-        # Match encontrado na KB — retorna direto (sem cloud)
-        resposta_kb = kb_responder(pergunta)
-        logger.info(f"perguntar: respondido via KB Local para '{pergunta[:50]}'")
-        return resposta_kb
-
-    # 2. Pergunta não está na KB — tenta cloud
-    sys_consultor = (
-        "Você é o Consultor Tributário ORGATEC, especialista em NFA, ICMS, FUNRURAL, "
-        "CTN, LC 87/96 e Reforma Tributária (EC 132/23). "
-        "Responda de forma clara, objetiva e embasada na legislação brasileira. "
-        "Se não souber, diga 'Dados insuficientes' em vez de inventar."
-    )
-
-    prompt_consulta = pergunta.strip()
-    if context_ia:
-        prompt_consulta = f"Contexto:\n{context_ia}\n\nPergunta: {pergunta}"
-    if notas:
-        ctx_notas = _montar_prompt(notas)
-        prompt_consulta = f"{ctx_notas}\n\nPergunta: {pergunta}"
-
-    # 2. Pergunta complexa — tenta motores locais primeiro, depois cloud
-    if _swift_disponivel():
-        res = _analisar_swift(prompt_consulta, sys_consultor, callback)
-        if "[Swift" not in res:
-            return res
-
-    if _ollama_disponivel():
-        res = _analisar_ollama(prompt_consulta, sys_consultor, callback)
-        if "[Ollama Erro" not in res:
-            return res
-
-    # Cloud como fallback de último recurso (custo apenas se locais falharem)
-    if _claude_disponivel():
-        res = _analisar_claude(prompt_consulta, sys_consultor, callback)
-        if "[Claude" not in res:
-            return res
-
-    if _gemini_disponivel():
-        res = _analisar_gemini(prompt_consulta, sys_consultor, callback)
-        if "[Gemini" not in res:
-            return res
-
-    if _azure_disponivel():
-        res = _analisar_azure_openai(prompt_consulta, sys_consultor, callback)
-        if "[Azure" not in res:
-            return res
-
-    logger.warning("perguntar: todos os motores falharam, retornando KB genérica")
-    return _analisar_local_kb(pergunta, callback)
