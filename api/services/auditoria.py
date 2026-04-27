@@ -7,7 +7,7 @@ from typing import Any, List
 from fastapi import UploadFile  # noqa: F401 (mantido para compatibilidade de imports externos)
 from src.domain.extractor import extrair_notas, NFA, Parte, resumo_geral
 from src.domain.xml_parser import parse_xml, NotaFiscalXML
-from src.infrastructure.ai_client import analisar_producao
+from src.domain.analise_local import calcular_metricas_risco, gerar_veredito_local
 from src.application.reports.pdf_report import gerar_pdf
 from src.infrastructure.database_v2 import SessionLocal, Laudo
 
@@ -135,76 +135,22 @@ async def processar_lote_auditoria(
 
         _log_tempo("EXTRAÇÃO COMPLETA")
 
-        tasks_status[task_id] = {"status": "processamento_quantitativo", "progress": 30}
+        tasks_status[task_id] = {"status": "analisando", "progress": 50}
 
         valor_total_lote = sum(n.valor_total for n in all_notas) if all_notas else 0
-        score_risco = 0.5
-        nivel_risco = "MÉDIO"
 
         logger.info(f"Lote: {len(all_notas)} notas, R$ {valor_total_lote:,.2f}")
-        
-        tasks_status[task_id] = {"status": "analisando_ia", "progress": 50}
 
-        def callback_progresso(texto):
-            """Atualizar progresso em tempo real durante análise."""
-            logger.info(f"[IA] {texto}")
+        # Análise local determinística (sem agentes IA)
+        t_analise_start = time.time()
+        analise = calcular_metricas_risco(all_notas)
+        veredito = gerar_veredito_local(all_notas, client_name, analise)
+        t_analise = time.time() - t_analise_start
 
-        logger.info(f"[PRODUCAO] Iniciando análise para {client_name}")
-        t_claude_start = time.time()
+        score_risco = analise['score_risco']
+        nivel_risco = analise['nivel_risco']
 
-        # Timeout adaptativo: máximo 8 segundos para análise
-        # Se passar disso, usa modo rápido sem IA
-        import threading
-        resultado_ia = {'veredito': None, 'concluido': False}
-
-        def executar_analise():
-            try:
-                resultado_ia['veredito'] = analisar_producao(
-                    all_notas,
-                    callback=callback_progresso,
-                    nome_produtor=client_name
-                )
-            except Exception as e:
-                logger.warning(f"Análise IA falhou: {e}")
-                resultado_ia['veredito'] = None
-            finally:
-                resultado_ia['concluido'] = True
-
-        thread_ia = threading.Thread(target=executar_analise, daemon=True)
-        thread_ia.start()
-        thread_ia.join(timeout=8)  # Espera máximo 8s
-
-        t_claude = time.time() - t_claude_start
-
-        if resultado_ia['veredito']:
-            veredito = resultado_ia['veredito']
-            logger.info(f"⏱️  [IA COMPLETA] {t_claude:.1f}s")
-        else:
-            # Modo fallback: análise rápida baseada em KPIs
-            # Extrai período das notas
-            periodo_str = "N/D"
-            if all_notas:
-                datas = [n.emissao for n in all_notas if n.emissao]
-                if datas:
-                    datas_sorted = sorted(datas)
-                    periodo_str = f"{datas_sorted[0]} a {datas_sorted[-1]}"
-
-            veredito = f"""[VEREDITO RÁPIDO - Modo Otimizado]
-
-Contribuinte: {client_name}
-Período: {periodo_str}
-Notas: {len(all_notas)}
-Valor Total: R$ {valor_total_lote:,.2f}
-
-ANÁLISE AUTOMÁTICA (SEM IA):
-- {len(all_notas)} documentos processados
-- Valor agregado: R$ {valor_total_lote:,.2f}
-- Status: Processamento concluído em modo rápido
-
-Nota: Análise detalhada indisponível (timeout). Recomenda-se reprocessamento para análise completa.
-"""
-            logger.info(f"⏱️  [FALLBACK RÁPIDO] {t_claude:.1f}s (sem IA)")
-
+        logger.info(f"⏱️  [ANÁLISE LOCAL] {t_analise:.2f}s — Score: {score_risco:.3f}, Nível: {nivel_risco}")
         _log_tempo("ANÁLISE CONCLUÍDA")
 
         # Geracao de Relatorio PDF (AudiOrg Sovereign)
