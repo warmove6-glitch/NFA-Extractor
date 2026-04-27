@@ -125,11 +125,6 @@ class ClientCreate(BaseModel):
     cpf_cnpj: str = Field(..., description="CPF ou CNPJ (somente dígitos)")
 
 
-class ChatRequest(BaseModel):
-    pergunta: str
-    contexto: Optional[str] = ""
-
-
 # ── Rotas: Clientes (protegidas por JWT) ──────────────────────────────────────
 router_clientes = APIRouter(prefix="/clientes", tags=["Clientes"])
 
@@ -170,29 +165,10 @@ def remover_cliente(
     db.commit()
 
 
-# ── Rotas: Agente IA (protegidas por JWT) ─────────────────────────────────────
-router_agente = APIRouter(prefix="/agente", tags=["Agente"])
-
-
-@router_agente.post("/chat")
-def chat_agente(
-    request: ChatRequest,
-    _: TokenData = Depends(get_current_user),
-):
-    """Sync route — FastAPI runs this in a thread pool, so the event loop stays free."""
-    from src.infrastructure.ai_client import perguntar
-    try:
-        res = perguntar(notas=[], context_ia=request.contexto, pergunta=request.pergunta)
-        return {"response": res}
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-
 # ── Registro de routers ───────────────────────────────────────────────────────
 app.include_router(auth_router.router)
 app.include_router(auditoria.router)
 app.include_router(router_clientes)
-app.include_router(router_agente)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
