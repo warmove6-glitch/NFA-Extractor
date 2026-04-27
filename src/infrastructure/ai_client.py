@@ -1,7 +1,7 @@
 """
-Cliente IA — Arquitetura "Soberana Local" (ms-swift 2026).
-Squad Antigravity: @Ípsilon, @Sigma e @Gama operando 100% local via ms-swift/Ollama.
-Cloud (Claude/Gemini/Azure) disponível apenas via provedor explícito — nunca no auto-mode.
+Cliente IA — Produção Enxuto (2026).
+Modo produção: Claude (primário) → Swift/KB Local (fallback).
+Foco: Performance (<20s), simplicidade, custo controlado.
 """
 
 import os
@@ -9,8 +9,6 @@ import logging
 import requests
 import anthropic
 import json
-from google import genai
-from google.genai import types
 from pathlib import Path
 from src.domain.extractor import NFA, resumo_geral
 
@@ -27,9 +25,8 @@ def _carregar_env(chave: str) -> str:
                     if k == chave: return v
     return os.getenv(chave, '')
 
-# MODELOS 2026 (SQUAD ANTIGRAVITY)
+# MODELOS (PRODUÇÃO)
 CLAUDE_MODEL = 'claude-sonnet-4-6'
-GEMINI_MODEL = 'gemini-flash-latest'
 
 # Motor local ms-swift (OpenAI-compatible — porta padrão do swift deploy)
 SWIFT_URL    = 'http://localhost:8000/v1'
@@ -41,32 +38,9 @@ OLLAMA_MODEL = 'llama3.1:8b'
 
 # ── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
 
-SYSTEM_IPSILON = "Processador ETL ORGATEC. Extraia totais (Venda/Remessa) e agrupe. Seja conciso."
-
-SYSTEM_SIGMA   = """[MODO_CONCISO] Você é @Sigma (Data Scientist ORGATEC).
-Mindset: Matemática Bayesiana, Contabilidade Tributária Sistêmica e Big Data.
-Missão: Analise o faturamento e discrepâncias volumétricas com rigor matemático."""
-
-SYSTEM_GAMA    = """[MODO_CONCISO] Você é @Gama (Senior Tax Advisor ORGATEC).
-Mindset: Compliance Fiscal e Planejamento Tributário.
-Protocolo de Entrega: Relatório Jurídico, Cenários de Risco e Conclusão Estratégica.
-Seja direto e embase as análises na legislação."""
-
-SYSTEM_AUDITOR = """Você é o Auditor-Chefe da Squad Antigravity, operando sob o PROTOCOLO SOBERANO ORGATEC.
-Sua missão é realizar a REANÁLISE FORENSE DEFINITIVA.
-
-REGRA DE OURO (SEGURANÇA):
-- ZERO-HALLUCINATION: Se os dados extraídos forem insuficientes ou contraditórios, declare "DADOS INSUFICIENTES PARA VEREDITO". Nunca invente nomes, valores ou fluxos.
-- EVIDÊNCIA PURA: Toda conclusão deve citar a NFA ou o Valor que a originou.
-
-ESTRUTURA OBRIGATÓRIA DO VEREDITO:
-1. REANÁLISE ESTRATÉGICA (O Veredito): Resumo executivo baseado em evidências.
-2. ENTRADAS (Investimento): Somatório real de animais adquiridos.
-3. SAÍDAS (Faturamento): Somatório real de animais comercializados.
-4. ANOMALIA BIO-CONTÁBIL: Diferença matemática exata entre estoque inicial/final.
-5. HIPÓTESE TÉCNICA ORGATEC: Tese agressiva baseada na inconsistência detectada.
-
-Use tom clínico, forense e autoritário. Proteja a integridade técnica da ORGATEC."""
+SYSTEM_GAMA = """Especialista Fiscal ORGATEC.
+Analise Notas Fiscais com rigor tributário (CTN, LC 87/96, RICMS, legislação).
+Retorne: veredito jurídico, cenários de risco e conclusão técnica."""
 
 def _claude_disponivel() -> bool:
     key = _carregar_env('ANTHROPIC_API_KEY')
@@ -257,105 +231,6 @@ Retorne em JSON estruturado.
         return {"status": "erro", "mensagem": f"Erro: {e}"}
 
 
-def _analisar_azure_openai(prompt: str, sys: str, callback=None) -> str:
-    """Motor Azure OpenAI com streaming (compatível com Copilot Enterprise)."""
-    try:
-        from openai import AzureOpenAI
-    except ImportError:
-        logger.error("Azure OpenAI: pacote 'openai' não instalado. Execute: pip install openai")
-        return "[Azure OpenAI Inativo: pacote não instalado]"
-
-    key      = _carregar_env('AZURE_OPENAI_KEY')
-    endpoint = _carregar_env('AZURE_OPENAI_ENDPOINT')
-    deploy   = _carregar_env('AZURE_OPENAI_DEPLOYMENT') or 'gpt-4o'
-    version  = _carregar_env('AZURE_OPENAI_API_VERSION') or '2025-01-01-preview'
-
-    if not key or not endpoint:
-        logger.warning("Azure OpenAI: AZURE_OPENAI_KEY ou AZURE_OPENAI_ENDPOINT não configurados.")
-        return "[Azure OpenAI Inativo]"
-
-    try:
-        cliente = AzureOpenAI(api_key=key, azure_endpoint=endpoint, api_version=version)
-        res = ""
-        stream = cliente.chat.completions.create(
-            model=deploy,
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": prompt}],
-            max_tokens=4096,
-            stream=True,
-        )
-        for chunk in stream:
-            token = (chunk.choices[0].delta.content or "") if chunk.choices else ""
-            res += token
-            if callback and token: callback(token)
-        return res
-    except Exception as e:
-        logger.error(f"Azure OpenAI: Erro — {e}")
-        return f"[Azure OpenAI Falhou: {e}]"
-
-
-def _analisar_openai(prompt: str, sys: str, callback=None) -> str:
-    """Motor OpenAI direto (GPT-4o) com streaming."""
-    try:
-        from openai import OpenAI
-    except ImportError:
-        return "[OpenAI Inativo: pacote não instalado]"
-
-    key = _carregar_env('OPENAI_API_KEY')
-    if not key or not key.startswith('sk-'):
-        return "[OpenAI Inativo]"
-
-    try:
-        cliente = OpenAI(api_key=key)
-        modelo  = _carregar_env('OPENAI_MODEL') or 'gpt-4o'
-        res = ""
-        stream = cliente.chat.completions.create(
-            model=modelo,
-            messages=[{"role": "system", "content": sys}, {"role": "user", "content": prompt}],
-            max_tokens=4096,
-            stream=True,
-        )
-        for chunk in stream:
-            token = (chunk.choices[0].delta.content or "") if chunk.choices else ""
-            res += token
-            if callback and token: callback(token)
-        return res
-    except Exception as e:
-        logger.error(f"OpenAI: Erro — {e}")
-        return f"[OpenAI Falhou: {e}]"
-
-
-def _analisar_gemini(prompt: str, sys: str, callback=None) -> str:
-    import time
-    api_key = _carregar_env('GOOGLE_API_KEY')
-    if not api_key: return "[Gemini Inativo]"
-    cliente = genai.Client(api_key=api_key)
-    
-    modelos_tentar = [GEMINI_MODEL, 'gemini-1.5-flash-latest', 'gemini-1.5-pro-latest']
-
-    
-    for model_name in modelos_tentar:
-        for tentativa in range(3):
-            try:
-                response = cliente.models.generate_content(
-                    model=model_name, contents=prompt,
-                    config=types.GenerateContentConfig(system_instruction=sys)
-                )
-                return response.text
-            except Exception as e:
-                err_str = str(e)
-                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    wait_time = 20 * (tentativa + 1)
-                    logger.warning(f"Gemini ({model_name}): Rate limit (429). Aguardando {wait_time}s... (Tentativa {tentativa+1}/3)")
-                    if callback: callback(f"\n[!] Rate Limit Gemini. Pausando {wait_time}s para recuperação...\n")
-                    time.sleep(wait_time)
-                    continue
-                
-                logger.error(f"Gemini ({model_name}): Erro — {e}")
-                break # Tenta o próximo modelo se não for 429
-    
-    return f"[Gemini Falhou após rotação e retries]"
-
-
 def _analisar_ollama(prompt: str, sys: str, callback=None) -> str:
     """Motor Local com Streaming para evitar hangs."""
     try:
@@ -445,48 +320,6 @@ def _local_kb_disponivel() -> bool:
 
 # ── ORQUESTRADOR RESILIENTE ────────────────────────────────────────────────
 
-def analisar(notas: list[NFA], callback=None, system_override: str = None, 
-             provedor: str = "auto", nome_produtor: str = "") -> str:
-    """Orquestrador resiliente que suporta seleção de motor e fallback."""
-    prompt = _montar_prompt(notas)
-    if nome_produtor:
-        prompt = f"PRODUTOR: {nome_produtor}\n\n" + prompt
-        
-    sys = system_override or SYSTEM_GAMA
-    
-    # Roteamento por provedor explícito (nunca acionado no auto-mode)
-    if provedor in ('azure', 'copilot'):
-        return _analisar_azure_openai(prompt, sys, callback)
-    elif provedor == 'openai':
-        return _analisar_openai(prompt, sys, callback)
-    elif provedor == 'claude':
-        return _analisar_claude(prompt, sys, callback)
-    elif provedor == 'gemini':
-        return _analisar_gemini(prompt, sys, callback)
-    elif provedor == 'ollama':
-        return _analisar_ollama(prompt, sys, callback)
-    elif provedor == 'swift':
-        return _analisar_swift(prompt, sys, callback)
-
-    # ── AUTO-MODE: 100% Local (Swift → Ollama → KB Local) ──────────────────
-    # Cloud APIs ficam fora do auto-mode para garantir custo zero.
-    # Para forçar cloud, use provedor='claude' / 'gemini' / 'azure'.
-
-    if _swift_disponivel():
-        if callback: callback("[LOCAL] Motor ms-swift ativo...\n")
-        res = _analisar_swift(prompt, sys, callback)
-        if "[Swift" not in res:
-            return res
-
-    if _ollama_disponivel():
-        if callback: callback("[LOCAL] Fallback Ollama ativo...\n")
-        res = _analisar_ollama(prompt, sys, callback)
-        if "[Ollama Erro" not in res:
-            return res
-
-    if callback: callback("[!] Motores locais indisponíveis — Ativando Base de Conhecimento Local...\n")
-    return _analisar_local_kb(prompt, callback)
-
 
 def analisar_producao(notas: list[NFA], callback=None, system_override: str = None,
                      nome_produtor: str = "") -> str:
@@ -563,36 +396,6 @@ def analisar_producao(notas: list[NFA], callback=None, system_override: str = No
     return _analisar_local_kb(prompt, callback)
 
 # ── PIPELINE EM LOTES (TURBO) ──────────────────────────────────────────────
-
-def analisar_pipeline(notas: list[NFA], callback=None, batch_size=15, nome_contribuinte: str = "") -> str:
-    """Processa grandes volumes dividindo em lotes e consolida com o Auditor Supremo."""
-    if callback: 
-        msg = f"\n[SQUAD] Iniciando Processamento de {len(notas)} notas"
-        if nome_contribuinte: msg += f" para {nome_contribuinte}"
-        callback(f"{msg} em lotes de {batch_size}...\n")
-    
-    análises_parciais = []
-    total_lotes = (len(notas) + batch_size - 1) // batch_size
-    
-    for i in range(0, len(notas), batch_size):
-        lote_num = (i // batch_size) + 1
-        lote = notas[i : i + batch_size]
-        if callback: callback(f"\n── Lote {lote_num}/{total_lotes} ({len(lote)} notas) ──\n")
-        
-        # Faz uma análise BI/Tributária rápida do lote (@Sigma)
-        res_lote = analisar(lote, callback=callback, system_override=SYSTEM_SIGMA)
-        análises_parciais.append(res_lote)
-        if callback: callback("\n[OK] Lote processado.\n")
-
-    # Estágio Final: Consolidação (Auditor Supremo)
-    if callback: callback("\n── ESTÁGIO FINAL: Auditoria Suprema de Fluxo de Estoque ──\n\n")
-    
-    contexto_auditoria = f"ALVO DA AUDITORIA: {nome_contribuinte}\n" if nome_contribuinte else ""
-    prompt_final = contexto_auditoria + "CONSOLIDAÇÃO DAS ANÁLISES POR LOTE:\n" + "\n---\n".join(análises_parciais)
-    
-    # O auditor mestre recebe a regra de ouro via SYSTEM_AUDITOR
-    return analisar(notas[:5], callback=callback, system_override=SYSTEM_AUDITOR + "\n" + prompt_final)
-
 
 # ── FUNÇÃO perguntar() — Endpoint /agente/chat ─────────────────────────────
 

@@ -15,10 +15,9 @@ from src.domain.extractor import NFA, Parte, Produto
 from src.infrastructure.ai_client import (
     _carregar_env,
     _claude_disponivel,
-    _gemini_disponivel,
     _ollama_disponivel,
     _montar_prompt,
-    analisar,
+    analisar_producao,
 )
 
 
@@ -86,15 +85,6 @@ class TestDisponibilidade:
         with patch('src.infrastructure.ai_client._carregar_env', return_value='chave_invalida'):
             assert _claude_disponivel() is False
 
-    def test_gemini_disponivel_com_chave(self):
-        """_gemini_disponivel() só checa se a chave existe (não o tamanho)."""
-        with patch('src.infrastructure.ai_client._carregar_env', return_value='qualquer-chave'):
-            assert _gemini_disponivel() is True
-
-    def test_gemini_indisponivel_com_chave_vazia(self):
-        with patch('src.infrastructure.ai_client._carregar_env', return_value=''):
-            assert _gemini_disponivel() is False
-
     def test_ollama_disponivel_quando_servidor_responde(self):
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -124,49 +114,3 @@ class TestMontarPrompt:
     def test_prompt_lista_vazia_nao_lanca_erro(self):
         prompt = _montar_prompt([])
         assert isinstance(prompt, str)
-
-
-# ─── Testes: analisar() — fallback chain ─────────────────────────────────────
-# NOTA: analisar() em modo 'auto' chama _analisar_claude/_gemini/_ollama diretamente.
-# Os mocks corretos são nas funções privadas, não nas de disponibilidade.
-
-class TestAnalisar:
-
-    def test_retorna_ollama_quando_claude_e_gemini_falham(self, notas_simples):
-        """Quando Claude e Gemini retornam prefixo de erro, cai no Ollama."""
-        texto_ollama = 'Análise via Ollama Mock'
-        with patch('src.infrastructure.ai_client._analisar_claude', return_value='[Claude Inativo]'), \
-             patch('src.infrastructure.ai_client._analisar_gemini', return_value='[Gemini Inativo]'), \
-             patch('src.infrastructure.ai_client._analisar_ollama', return_value=texto_ollama) as mock_ollama:
-            resultado = analisar(notas_simples)
-            mock_ollama.assert_called_once()
-            assert resultado == texto_ollama
-
-    def test_usa_swift_quando_disponivel(self, notas_simples):
-        """Se Swift responde sem prefixo de erro, é usado como motor primário."""
-        texto_swift = 'Análise detalhada via Swift Mock'
-        with patch('src.infrastructure.ai_client._swift_disponivel', return_value=True), \
-             patch('src.infrastructure.ai_client._analisar_swift', return_value=texto_swift) as mock_swift:
-            resultado = analisar(notas_simples)
-            mock_swift.assert_called_once()
-            assert resultado == texto_swift
-
-    def test_usa_ollama_quando_swift_falha(self, notas_simples):
-        """Se Swift falha (prefixo [Swift), cai no Ollama."""
-        texto_ollama = 'Análise via Ollama Mock'
-        with patch('src.infrastructure.ai_client._swift_disponivel', return_value=True), \
-             patch('src.infrastructure.ai_client._analisar_swift', return_value='[Swift Falhou: timeout]'), \
-             patch('src.infrastructure.ai_client._ollama_disponivel', return_value=True), \
-             patch('src.infrastructure.ai_client._analisar_ollama', return_value=texto_ollama) as mock_ollama:
-            resultado = analisar(notas_simples)
-            mock_ollama.assert_called_once()
-            assert resultado == texto_ollama
-
-    def test_resultado_e_string_nao_vazia(self, notas_simples):
-        """Garante que o resultado final é sempre string não-vazia."""
-        with patch('src.infrastructure.ai_client._analisar_claude', return_value='[Claude Inativo]'), \
-             patch('src.infrastructure.ai_client._analisar_gemini', return_value='[Gemini Inativo]'), \
-             patch('src.infrastructure.ai_client._analisar_ollama', return_value='Fallback OK'):
-            resultado = analisar(notas_simples)
-            assert isinstance(resultado, str)
-            assert len(resultado) > 0
