@@ -90,7 +90,7 @@ async def processar_lote_auditoria(
     client_name: str,
     client_cpf: str,
     modo_relatorio: str = 'simples',  # 'simples' ou 'detalhado'
-    formato_relatorio: str = 'pdf',  # 'pdf' (ReportLab) ou 'html' (moderno)
+    formato_relatorio: str = 'html',  # 'html' (moderno, padrão) ou 'pdf' (ReportLab)
 ):
     """
     Processo em background seguindo a diretriz AudiOrg de escalabilidade.

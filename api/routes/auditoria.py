@@ -30,7 +30,7 @@ async def iniciar_auditoria(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     modo_relatorio: str = Query('simples', description="'simples' (rápido) ou 'detalhado'"),
-    formato_relatorio: str = Query('pdf', description="'pdf' (ReportLab) ou 'html' (moderno)"),
+    formato_relatorio: str = Query('html', description="'html' (moderno, padrão) ou 'pdf' (ReportLab)"),
     db: Session = Depends(get_db),
 ):
     """
