@@ -129,18 +129,14 @@ async def processar_lote_auditoria(
                 logger.error(f"Falha ao processar {filename}: {exc}")
 
         _log_tempo("EXTRAÇÃO COMPLETA")
-        valor_total_lote = sum(n.valor_total for n in all_notas)
 
         tasks_status[task_id] = {"status": "processamento_quantitativo", "progress": 30}
 
-        resumo = resumo_geral(all_notas, nome_contribuinte=client_name)
-        _log_tempo("RESUMO GERAL")
+        valor_total_lote = sum(n.valor_total for n in all_notas) if all_notas else 0
+        score_risco = 0.5
+        nivel_risco = "MÉDIO"
 
-        # Score simplificado: baseado apenas em análise de risco qualitativa
-        score_risco = 0.5  # Neutral (será refinado pela IA)
-        nivel_risco = "MÉDIO"  # Will be overridden by IA veredito
-
-        logger.info(f"GROUND TRUTH SIMPLIFICADO: Valor Total {valor_total_lote}, {len(all_notas)} notas")
+        logger.info(f"Lote: {len(all_notas)} notas, R$ {valor_total_lote:,.2f}")
         
         tasks_status[task_id] = {"status": "analisando_ia", "progress": 50}
 

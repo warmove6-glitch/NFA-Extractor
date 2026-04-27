@@ -485,7 +485,15 @@ def gerar_pdf(
         topMargin=2.5*cm, bottomMargin=2*cm,
     )
     st = _estilos()
-    res = resumo_geral(notas, nome_contribuinte=nome_contribuinte)
+    # Mini-resumo rápido (sem cálculos pesados)
+    res = {
+        'total_notas': len(notas),
+        'total_cabecas': sum(n.quantidade_total for n in notas) if notas else 0,
+        'total_valor': sum(n.valor_total for n in notas) if notas else 0,
+        'ticket_medio': (sum(n.valor_total for n in notas) / sum(n.quantidade_total for n in notas)) if notas and sum(n.quantidade_total for n in notas) > 0 else 0,
+        'por_natureza': {},
+        'top_dest': [],
+    }
     elements = []
 
     # ── Título ────────────────────────────────────────────────────────────────
