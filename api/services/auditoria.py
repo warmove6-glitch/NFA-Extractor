@@ -79,6 +79,7 @@ async def processar_lote_auditoria(
     files: List[tuple],   # lista de (filename: str, content: bytes) — lidos na rota
     client_name: str,
     client_cpf: str,
+    modo_relatorio: str = 'simples',  # 'simples' ou 'detalhado'
 ):
     """
     Processo em background seguindo a diretriz AudiOrg de escalabilidade.
@@ -160,6 +161,7 @@ async def processar_lote_auditoria(
                 cpf_contribuinte=client_cpf,
                 risco_nivel=nivel_risco,
                 score_risco=score_risco,
+                modo_relatorio=modo_relatorio,
             )
             logger.info(f"Relatorio PDF gerado: {pdf_path}")
         except Exception as e_pdf:

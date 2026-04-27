@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List
 import uuid
@@ -26,6 +26,7 @@ async def iniciar_auditoria(
     client_id: int,
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
+    modo_relatorio: str = Query('simples', description="'simples' (rápido) ou 'detalhado'"),
     db: Session = Depends(get_db),
 ):
     """
@@ -78,6 +79,7 @@ async def iniciar_auditoria(
         arquivos_bytes,   # lista de (nome, bytes) — sem dependência de UploadFile
         cliente.nome,
         cliente.cpf_cnpj,
+        modo_relatorio,
     )
 
     return {

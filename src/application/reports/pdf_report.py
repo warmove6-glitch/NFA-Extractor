@@ -469,8 +469,14 @@ def gerar_pdf(
     anomalias: list = None,
     risco_nivel: str = '',
     score_risco: float = 0.0,
+    modo_relatorio: str = 'detalhado',
 ) -> None:
-    """Gera Laudo Técnico de Auditoria Forense profissional."""
+    """Gera Laudo Técnico de Auditoria.
+
+    Modos:
+    - 'simples': Apenas título, KPIs e parecer IA (rápido ~2s)
+    - 'detalhado': Tudo incluindo tabelas detalhadas (padrão ~3-5s)
+    """
     usable_w = W - 4*cm  # margens 2cm cada lado
 
     doc = SimpleDocTemplate(
@@ -540,64 +546,71 @@ def gerar_pdf(
     elements.append(_row_cards(row2, usable_w))
     elements.append(Spacer(1, 0.5*cm))
 
-    # ── Seção 1: Distribuição por Natureza ────────────────────────────────────
-    por_nat = res.get('por_natureza', {})
-    if por_nat:
-        elements.append(Paragraph("1. DISTRIBUIÇÃO POR NATUREZA DE OPERAÇÃO", st['sec']))
-        elements.append(_tabela_natureza(res, st, usable_w))
-        elements.append(Spacer(1, 0.4*cm))
+    secnum = 1
+    # ── Seções detalhadas (apenas em modo 'detalhado') ────────────────────────
+    if modo_relatorio == 'detalhado':
+        # Seção 1: Distribuição por Natureza
+        por_nat = res.get('por_natureza', {})
+        if por_nat:
+            elements.append(Paragraph("1. DISTRIBUIÇÃO POR NATUREZA DE OPERAÇÃO", st['sec']))
+            elements.append(_tabela_natureza(res, st, usable_w))
+            elements.append(Spacer(1, 0.4*cm))
+            secnum += 1
 
-    # ── Seção 2: Top Destinatários ────────────────────────────────────────────
-    top_dest = res.get('top_dest', [])
-    if top_dest:
-        elements.append(Paragraph("2. PRINCIPAIS DESTINATÁRIOS", st['sec']))
-        elements.append(_tabela_top_dest(res, st, usable_w))
-        elements.append(Spacer(1, 0.4*cm))
+        # Seção 2: Top Destinatários
+        top_dest = res.get('top_dest', [])
+        if top_dest:
+            elements.append(Paragraph(f"{secnum}. PRINCIPAIS DESTINATÁRIOS", st['sec']))
+            elements.append(_tabela_top_dest(res, st, usable_w))
+            elements.append(Spacer(1, 0.4*cm))
+            secnum += 1
 
-    # ── Seção 3: Parecer Técnico (IA) ─────────────────────────────────────────
-    secnum = 3
+    # ── Seção 1/3: Parecer Técnico (IA) ──────────────────────────────────────
     if analise_ia:
-        elements.append(Paragraph(f"{secnum}. PARECER TÉCNICO E VEREDITO DE RISCO", st['sec']))
+        elements.append(Paragraph(f"{secnum_parecer}. PARECER TÉCNICO E VEREDITO DE RISCO", st['sec']))
         elements.extend(_render_markdown(analise_ia, st))
         elements.append(Spacer(1, 0.3*cm))
-        secnum += 1
 
-    # ── Seção 4: Evidências de Fraude ─────────────────────────────────────────
-    if anomalias:
-        elements.append(Paragraph(f"{secnum}. EVIDÊNCIAS DE FRAUDE E INCONSISTÊNCIAS", st['sec']))
-        elements.append(Paragraph(
-            f"Foram identificadas <b>{len(anomalias)}</b> inconsistência(s) no lote auditado.",
-            st['txt']))
-        elements.append(Spacer(1, 0.2*cm))
-        elements.append(_tabela_anomalias(anomalias, st, usable_w))
-        secnum += 1
+    # ── Seções detalhadas apenas em modo 'detalhado' ──────────────────────────
+    if modo_relatorio == 'detalhado':
+        secnum_det = secnum_parecer + 1 if analise_ia else secnum_parecer
 
-    # ── Anexos: tabelas analíticas ────────────────────────────────────────────
-    tab_mensal = _tabela_mensal(res, st, usable_w)
-    tab_vnd_rem = _tabela_vendas_remessas(res, st, usable_w)
-    tab_resumo = _tabela_resumo_analise(res, st, usable_w)
-
-    if tab_mensal or tab_vnd_rem or tab_resumo:
-        elements.append(PageBreak())
-        elements.append(Paragraph("ANEXO I — ANÁLISE TABULAR DETALHADA", st['sec']))
-
-        if tab_resumo:
-            elements.append(Paragraph("Resumo Analítico:", st['txt']))
+        # Seção 4: Evidências de Fraude
+        if anomalias:
+            elements.append(Paragraph(f"{secnum_det}. EVIDÊNCIAS DE FRAUDE E INCONSISTÊNCIAS", st['sec']))
+            elements.append(Paragraph(
+                f"Foram identificadas <b>{len(anomalias)}</b> inconsistência(s) no lote auditado.",
+                st['txt']))
             elements.append(Spacer(1, 0.2*cm))
-            elements.append(tab_resumo)
-            elements.append(Spacer(1, 0.4*cm))
+            elements.append(_tabela_anomalias(anomalias, st, usable_w))
+            secnum_det += 1
 
-        if tab_vnd_rem:
-            elements.append(Paragraph("Análise Comparativa — Vendas vs Remessas:", st['txt']))
-            elements.append(Spacer(1, 0.2*cm))
-            elements.append(tab_vnd_rem)
-            elements.append(Spacer(1, 0.4*cm))
+        # Anexo: tabelas analíticas
+        tab_mensal = _tabela_mensal(res, st, usable_w)
+        tab_vnd_rem = _tabela_vendas_remessas(res, st, usable_w)
+        tab_resumo = _tabela_resumo_analise(res, st, usable_w)
 
-        if tab_mensal:
-            elements.append(Paragraph("Evolução Mensal Detalhada:", st['txt']))
-            elements.append(Spacer(1, 0.2*cm))
-            elements.append(tab_mensal)
-            elements.append(Spacer(1, 0.4*cm))
+        if tab_mensal or tab_vnd_rem or tab_resumo:
+            elements.append(PageBreak())
+            elements.append(Paragraph("ANEXO I — ANÁLISE TABULAR DETALHADA", st['sec']))
+
+            if tab_resumo:
+                elements.append(Paragraph("Resumo Analítico:", st['txt']))
+                elements.append(Spacer(1, 0.2*cm))
+                elements.append(tab_resumo)
+                elements.append(Spacer(1, 0.4*cm))
+
+            if tab_vnd_rem:
+                elements.append(Paragraph("Análise Comparativa — Vendas vs Remessas:", st['txt']))
+                elements.append(Spacer(1, 0.2*cm))
+                elements.append(tab_vnd_rem)
+                elements.append(Spacer(1, 0.4*cm))
+
+            if tab_mensal:
+                elements.append(Paragraph("Evolução Mensal Detalhada:", st['txt']))
+                elements.append(Spacer(1, 0.2*cm))
+                elements.append(tab_mensal)
+                elements.append(Spacer(1, 0.4*cm))
 
     # ── Encerramento ──────────────────────────────────────────────────────────
     elements.append(Spacer(1, 1.5*cm))
