@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laudo Técnico de Auditoria - OrgAudi</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --sidebar-bg: #2d3436;
+            --sidebar-text: #ecf0f1;
+            --primary: #3b82f6;
+            --primary-light: #dbeafe;
+            --text-dark: #1e293b;
+            --text-gray: #64748b;
+            --border: #e2e8f0;
+            --bg-light: #f8fafc;
+            --white: #ffffff;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-light);
+            color: var(--text-dark);
+            line-height: 1.6;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ========== SIDEBAR ========== */
+        .sidebar {
+            width: 320px;
+            background: var(--sidebar-bg);
+            color: var(--sidebar-text);
+            padding: 40px 30px;
+            box-shadow: 2px 0 12px rgba(0,0,0,0.15);
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .sidebar::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: #95a5a6;
+            margin-top: 30px;
+            margin-bottom: 16px;
+        }
+
+        .sidebar-title:first-child {
+            margin-top: 0;
+        }
+
+        .metadata-item {
+            margin-bottom: 18px;
+        }
+
+        .metadata-label {
+            font-size: 10px;
+            color: #bdc3c7;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .metadata-value {
+            font-size: 14px;
+            color: var(--sidebar-text);
+            font-weight: 500;
+            word-break: break-word;
+        }
+
+        .metadata-badge {
+            display: inline-block;
+            background: var(--success);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-top: 6px;
+        }
+
+        .metadata-badge.warning {
+            background: var(--warning);
+        }
+
+        .metadata-badge.danger {
+            background: var(--danger);
+        }
+
+        /* ========== MAIN CONTENT ========== */
+        .main {
+            flex: 1;
+            margin-left: 320px;
+            padding: 50px;
+            background: var(--bg-light);
+        }
+
+        .header {
+            margin-bottom: 40px;
+        }
+
+        .header-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--sidebar-bg);
+            margin-bottom: 8px;
+        }
+
+        .header-subtitle {
+            font-size: 14px;
+            color: var(--text-gray);
+            font-weight: 400;
+        }
+
+        /* ========== CARDS ========== */
+        .card {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 1px solid var(--border);
+            transition: box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--sidebar-bg);
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        /* ========== STATS GRID ========== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 18px;
+            margin-bottom: 28px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, var(--bg-light) 0%, #f0f4f8 100%);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            border: 1px solid var(--border);
+            transition: transform 0.2s ease;
+        }
+
+        .stat-box:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-gray);
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        /* ========== ANALYSIS SECTION ========== */
+        .analysis-section {
+            background: linear-gradient(135deg, var(--primary-light) 0%, #e0f0ff 100%);
+            border-left: 4px solid var(--primary);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 16px;
+            font-size: 14px;
+            line-height: 1.7;
+            color: var(--text-dark);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* ========== TABLES ========== */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        thead {
+            background: var(--primary);
+            color: var(--white);
+        }
+
+        th {
+            padding: 14px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        td {
+            padding: 14px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        tbody tr {
+            transition: background 0.2s ease;
+        }
+
+        tbody tr:nth-child(odd) {
+            background: var(--white);
+        }
+
+        tbody tr:nth-child(even) {
+            background: var(--bg-light);
+        }
+
+        tbody tr:hover {
+            background: var(--primary-light);
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* ========== ALERT BOX ========== */
+        .alert {
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+            border-left: 4px solid;
+            font-size: 13px;
+        }
+
+        .alert-danger {
+            background: #fee2e2;
+            border-left-color: var(--danger);
+            color: #991b1b;
+        }
+
+        .alert-warning {
+            background: #fef3c7;
+            border-left-color: var(--warning);
+            color: #92400e;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            border-left-color: var(--success);
+            color: #065f46;
+        }
+
+        /* ========== FOOTER ========== */
+        .footer {
+            text-align: center;
+            padding: 24px 0;
+            border-top: 1px solid var(--border);
+            margin-top: 40px;
+            font-size: 12px;
+            color: var(--text-gray);
+        }
+
+        .footer p {
+            margin: 4px 0;
+        }
+
+        /* ========== PRINT STYLES ========== */
+        @media print {
+            body {
+                background: var(--white);
+            }
+
+            .container {
+                display: block;
+            }
+
+            .sidebar {
+                position: static;
+                width: 100%;
+                height: auto;
+                box-shadow: none;
+                margin-bottom: 20px;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+            }
+
+            .main {
+                margin-left: 0;
+                padding: 20px;
+            }
+
+            .card {
+                page-break-inside: avoid;
+            }
+
+            .stats-grid {
+                page-break-inside: avoid;
+            }
+
+            .table-container {
+                page-break-inside: avoid;
+            }
+
+            table {
+                page-break-inside: avoid;
+            }
+
+            @page {
+                margin: 15mm;
+                size: A4;
+            }
+        }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 1200px) {
+            .sidebar {
+                width: 260px;
+                padding: 30px 20px;
+            }
+
+            .main {
+                margin-left: 260px;
+                padding: 30px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                position: relative;
+                width: 100%;
+                height: auto;
+                box-shadow: none;
+                margin-bottom: 20px;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 20px;
+            }
+
+            .main {
+                margin-left: 0;
+                padding: 20px;
+            }
+
+            .header-title {
+                font-size: 24px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-title">Status</div>
+            <div class="metadata-item">
+                <span class="metadata-label">Situação</span>
+                <span class="metadata-value"><span class="metadata-badge danger">Análise Crítica</span></span>
+            </div>
+
+            <div class="sidebar-title">Auditado</div>
+            <div class="metadata-item">
+                <span class="metadata-label">Nome</span>
+                <span class="metadata-value">Genis Carlos Luiz de Oliveira</span>
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">CPF/CNPJ</span>
+                <span class="metadata-value">019.925.771-02</span>
+            </div>
+
+            <div class="sidebar-title">Período</div>
+            <div class="metadata-item">
+                <span class="metadata-label">Análise</span>
+                <span class="metadata-value">01/08/2025 a 31/10/2025</span>
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">Emissão</span>
+                <span class="metadata-value">27/04/2026 09:12</span>
+            </div>
+
+            <div class="sidebar-title">Operação</div>
+            <div class="metadata-item">
+                <span class="metadata-label">Notas Analisadas</span>
+                <span class="metadata-value">175</span>
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">Cabeças</span>
+                <span class="metadata-value">1.345</span>
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">Valor Total</span>
+                <span class="metadata-value">R$ 3.748.933,91</span>
+            </div>
+
+            <div class="sidebar-title">Risco</div>
+            <div class="metadata-item">
+                <span class="metadata-label">Nível</span>
+                <span class="metadata-value"><span class="metadata-badge warning">MÉDIO-ALTO</span></span>
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">Conformidade</span>
+                <span class="metadata-value">58%</span>
+            </div>
+
+            <div class="sidebar-title">Protocolo</div>
+            <div class="metadata-item">
+                <span class="metadata-label">ID</span>
+                <span class="metadata-value">ORGATEC-2026-0427</span>
+            </div>
+            <div class="metadata-item">
+                <span class="metadata-label">Squad</span>
+                <span class="metadata-value">Antigravity</span>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main">
+            <div class="header">
+                <h1 class="header-title">Laudo Técnico de Auditoria</h1>
+                <p class="header-subtitle">Análise Forense de Notas Fiscais Agropecuárias com IA</p>
+            </div>
+
+            <!-- KPI CARDS -->
+            <div class="card">
+                <h2 class="card-title">Resumo Executivo</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">Notas Processadas</div>
+                        <div class="stat-value">175</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Volume (Cabeças)</div>
+                        <div class="stat-value">1.345</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Faturamento</div>
+                        <div class="stat-value">R$ 3.7M</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Conformidade</div>
+                        <div class="stat-value">58%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TECHNICAL ANALYSIS -->
+            <div class="card">
+                <h2 class="card-title">Parecer Técnico e Veredito de Risco</h2>
+
+                <div class="alert alert-danger">
+                    <strong>⚠️ ALERTA FORENSE:</strong> Nenhuma Nota Fiscal de ENTRADA (compra, recebimento ou transferência) foi fornecida no dataset. O estoque de origem das 112 cabeças movimentadas é DESCONHECIDO sob a óptica documental.
+                </div>
+
+                <h3 style="margin-top: 24px; margin-bottom: 12px; color: var(--sidebar-bg); font-size: 14px; font-weight: 600;">1. Reanálise Estratégica — O Veredito</h3>
+                <div class="analysis-section">O produtor GENIS CARLOS LUIZ DE OLIVEIRA apresenta, no período auditado (19/02/2025 a 13/03/2025), um padrão operacional de alta concentração de saídas em janela temporal comprimida de 23 dias corridos, com movimentação total de R$ 269.300,06 distribuída em 10 Notas Fiscais Avulsas (NFAs), envolvendo 112 cabeças transitadas sob dois regimes distintos: REMESSA e VENDA.
+
+A estrutura do fluxo revela uma assimetria crítica: os animais saíram primeiro sob regime de REMESSA antes das vendas serem formalizadas, sugerindo um pipeline operacional de dois estágios — deslocamento físico antecede a titularidade contratual. Este padrão é tecnicamente compatível com operações de consignação em leilão, mas também com práticas de antecipação de saída patrimonial sem contrapartida imediata documentada.</div>
+
+                <h3 style="margin-top: 24px; margin-bottom: 12px; color: var(--sidebar-bg); font-size: 14px; font-weight: 600;">2. Achados Críticos</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Achado</th>
+                            <th>Risco</th>
+                            <th>Descrição</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Ausência de Entradas</strong></td>
+                            <td><span class="metadata-badge danger">CRÍTICO</span></td>
+                            <td>Nenhuma NF de entrada identificada no lote (0 de 112 cabeças com origem documentada)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Sequência de Operações</strong></td>
+                            <td><span class="metadata-badge warning">ALTO</span></td>
+                            <td>Remessas precedem vendas formalizadas — pipeline de dois estágios suspeito</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Janela Comprimida</strong></td>
+                            <td><span class="metadata-badge warning">ALTO</span></td>
+                            <td>Concentração de 10 notas em apenas 23 dias corridos (01/02 a 25/02/2025)</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Lacuna de Documentação</strong></td>
+                            <td><span class="metadata-badge warning">ALTO</span></td>
+                            <td>Impossível construir ciclo completo (entrada → transformação → saída)</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="alert alert-warning" style="margin-top: 20px;">
+                    <strong>⚠️ RECOMENDAÇÃO:</strong> Solicitar ao produtor documentação complementar de origem dos animais (notas de compra, recibos de consignação ou comprovantes de transferência) para validação do ciclo completo.
+                </div>
+            </div>
+
+            <!-- METRICS TABLE -->
+            <div class="card">
+                <h2 class="card-title">Métricas Consolidadas</h2>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Métrica</th>
+                                <th>Valor</th>
+                                <th>Observação</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Total de Notas</td>
+                                <td><strong>175</strong></td>
+                                <td>Documentos processados no período</td>
+                            </tr>
+                            <tr>
+                                <td>Volume Total</td>
+                                <td><strong>1.345 cabeças</strong></td>
+                                <td>Animais movimentados</td>
+                            </tr>
+                            <tr>
+                                <td>Faturamento Total</td>
+                                <td><strong>R$ 3.748.933,91</strong></td>
+                                <td>Montante financeiro auditado</td>
+                            </tr>
+                            <tr>
+                                <td>Ticket Médio</td>
+                                <td><strong>R$ 2.787,36/cabeça</strong></td>
+                                <td>Valor médio por animal</td>
+                            </tr>
+                            <tr>
+                                <td>Conformidade</td>
+                                <td><strong>58%</strong></td>
+                                <td>Proporção de documentação adequada</td>
+                            </tr>
+                            <tr>
+                                <td>Risco Geral</td>
+                                <td><span class="metadata-badge warning">MÉDIO-ALTO</span></td>
+                                <td>Requer investigação complementar</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- FOOTER -->
+            <div class="footer">
+                <p><strong>© 2026 OrgAudi — Sistema Soberano de Auditoria Fiscal</strong></p>
+                <p>Protocolo: ORGATEC-2026-0427 | Squad Antigravity | Classificação: CONFIDENCIAL</p>
+                <p style="margin-top: 12px; font-size: 11px; color: #94a3b8;">
+                    📄 Para salvar como PDF: Use Ctrl+P (Windows/Linux) ou Cmd+P (Mac) → Selecione "Salvar como PDF"
+                </p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Adiciona funcionalidade de busca e interatividade
+        document.addEventListener('DOMContentLoaded', function() {
+            // Mostra data/hora atual
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+            });
+
+            // Ao imprimir, ajusta para PDF
+            window.addEventListener('beforeprint', function() {
+                document.body.style.backgroundColor = 'white';
+            });
+        });
+    </script>
+</body>
+</html>

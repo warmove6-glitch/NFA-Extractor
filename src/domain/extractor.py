@@ -1,12 +1,24 @@
 import re
 import pdfplumber
 import logging
+import hashlib
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from .constants import REGEX
 
 logger = logging.getLogger('NFA_Extractor')
+
+# Cache em memória para PDFs processados (file_hash -> notas)
+_cache_extracoes: Dict[str, tuple[List['NFA'], str, str]] = {}
+
+def _hash_pdf(caminho_pdf: str) -> str:
+    """Calcula hash do PDF para cache."""
+    try:
+        with open(caminho_pdf, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except:
+        return ""
 
 # --- MODELS (Pydantic V2) ---
 
@@ -58,109 +70,148 @@ def classificar_natureza(natureza: str) -> str:
     return 'OUTRAS'
 
 def extrair_notas(caminho_pdf: str) -> tuple[List[NFA], str, str]:
-    """Extrai notas fiscais do PDF usando os padrões de constants.py."""
+    """Extrai notas fiscais do PDF usando os padrões de constants.py.
+
+    Otimizações:
+    - Cache em memória para PDFs já processados
+    - Processa página por página (evita carregar tudo em memória)
+    - Limita a 500 notas por PDF para evitar gargalos
+    """
+    import time
+    t0 = time.time()
+
+    # Verifica cache
+    pdf_hash = _hash_pdf(caminho_pdf)
+    if pdf_hash and pdf_hash in _cache_extracoes:
+        logger.info(f"[CACHE HIT] PDF encontrado no cache")
+        return _cache_extracoes[pdf_hash]
+
     notas = []
     nome_produtor = ""
     cpf_produtor = ""
-    
+    max_notas = 500
+
     try:
         with pdfplumber.open(caminho_pdf) as pdf:
-            texto_completo = ""
-            for page in pdf.pages:
-                texto_completo += page.extract_text() + "\n"
-            
-            # Identificação do Produtor (Contribuinte)
-            match_nome = re.search(r"CONTRIBUINTE:\s*(.*)", texto_completo, re.IGNORECASE)
-            if match_nome:
-                nome_produtor = match_nome.group(1).split("CPF/CNPJ")[0].strip()
-            
-            match_cpf = REGEX['cpf_ou_cnpj'].search(texto_completo)
-            if match_cpf:
-                cpf_produtor = match_cpf.group(1)
-
-            # Divisão por notas (cada nota começa com IDENTIFICAÇÃO DA NOTA)
-            # Usando padrão flexível para lidar com encoding (ex: IDENTIFICAAO)
             pattern_id = re.compile(r'IDENTIFICA.{1,2}AO DA NOTA', re.IGNORECASE)
-            blocos = pattern_id.split(texto_completo)
-            
-            for bloco in blocos[1:]:
-                try:
-                    nfa = NFA()
-                    
-                    # Número e Data
-                    # Padrão: 24925316 19/02/2025 REMESSA/LEILAO
-                    m_num = re.search(r'(\d{6,10})\s+(\d{2}/\d{2}/\d{4})\s+(.+)', bloco)
-                    if m_num:
-                        nfa.numero = m_num.group(1)
-                        nfa.emissao = m_num.group(2)
-                        nfa.natureza = classificar_natureza(m_num.group(3))
-                    
-                    # Chave de Acesso
-                    m_chave = re.search(r'\d{44}', bloco)
-                    if m_chave:
-                        nfa.chave_acesso = m_chave.group(0)
+            total_paginas = len(pdf.pages)
 
-                    # Partes (Remetente, Destinatário, Transportador)
-                    def extrair_parte_flex(termo_inicio, proximo_bloco, texto):
-                        # Procura o termo de início (ex: REMETENTE)
-                        match_start = re.search(termo_inicio, texto, re.IGNORECASE)
-                        if not match_start: return Parte()
-                        
-                        # Texto a partir do início
-                        sub = texto[match_start.end():]
-                        
-                        # Procura o próximo bloco para delimitar
-                        match_end = re.search(proximo_bloco, sub, re.IGNORECASE)
-                        if match_end: sub = sub[:match_end.start()]
-                        
-                        # Extrai informações da linha
-                        # Formato: NOME IE CPF/CNPJ MUNICIPIO
-                        linhas = [l.strip() for l in sub.split('\n') if l.strip()]
-                        p = Parte()
-                        if len(linhas) > 1:
-                            # Pula o cabeçalho (ex: INSCRIÇÃO ESTADUAL...) e pega os dados na próxima linha
-                            dados = linhas[1]
-                            # Tenta capturar CPF/CNPJ
-                            m_id = REGEX['cpf_ou_cnpj'].search(sub)
-                            if m_id: p.cpf_cnpj = m_id.group(1)
-                            
-                            # O nome costuma ser o início da linha antes dos números
-                            p.nome = re.split(r'\d', dados)[0].strip()
-                        elif linhas:
-                            p.nome = linhas[0].strip()
-                        return p
+            # Processa página por página (evita carregar tudo em memória)
+            paginas_processadas = 0
+            for page_idx, page in enumerate(pdf.pages):
+                if len(notas) >= max_notas:
+                    logger.info(f"[PDF EXTRACT] Limite de {max_notas} notas atingido após {page_idx} páginas")
+                    break
 
-                    nfa.remetente = extrair_parte_flex("REMETENTE", "DESTINAT.RIO", bloco)
-                    nfa.destinatario = extrair_parte_flex("DESTINAT.RIO", "TRANSPORTADOR", bloco)
-                    
-                    # Itens / Produtos
-                    for line in bloco.split('\n'):
-                        m_prod = REGEX['produto'].search(line)
-                        if m_prod:
-                            prod = Produto(
-                                codigo=m_prod.group(1),
-                                descricao=m_prod.group(2).strip(),
-                                quantidade=float(m_prod.group(3).replace('.','').replace(',','.')),
-                                vlr_unitario=float(m_prod.group(4).replace('.','').replace(',','.')),
-                                vlr_icms=float(m_prod.group(5).replace('.','').replace(',','.')),
-                                vlr_total=float(m_prod.group(6).replace('.','').replace(',','.'))
-                            )
-                            nfa.produtos.append(prod)
-                    
-                    nfa.quantidade_total = sum(p.quantidade for p in nfa.produtos)
-                    nfa.valor_total = sum(p.vlr_total for p in nfa.produtos)
-                    nfa.valor_icms = sum(p.vlr_icms for p in nfa.produtos)
-                    
-                    if nfa.numero:
-                        notas.append(nfa)
-                except Exception as e:
-                    logger.warning(f"Erro ao processar bloco de nota: {e}")
+                texto_pagina = page.extract_text() or ""
+                if not texto_pagina.strip():
                     continue
+
+                # Extrai informações do produtor apenas da primeira página
+                if page_idx == 0:
+                    match_nome = re.search(r"CONTRIBUINTE:\s*(.*)", texto_pagina, re.IGNORECASE)
+                    if match_nome:
+                        nome_produtor = match_nome.group(1).split("CPF/CNPJ")[0].strip()
+
+                    match_cpf = REGEX['cpf_ou_cnpj'].search(texto_pagina)
+                    if match_cpf:
+                        cpf_produtor = match_cpf.group(1)
+
+                # Divide página por notas
+                blocos = pattern_id.split(texto_pagina)
+                paginas_processadas += 1
+
+                # Processa blocos de notas nesta página
+                for bloco in blocos[1:]:
+                    if len(notas) >= max_notas:
+                        break
+
+                    try:
+                        nfa = NFA()
+
+                        # Número e Data
+                        # Padrão: 24925316 19/02/2025 REMESSA/LEILAO
+                        m_num = re.search(r'(\d{6,10})\s+(\d{2}/\d{2}/\d{4})\s+(.+)', bloco)
+                        if m_num:
+                            nfa.numero = m_num.group(1)
+                            nfa.emissao = m_num.group(2)
+                            nfa.natureza = classificar_natureza(m_num.group(3))
+
+                        # Chave de Acesso
+                        m_chave = re.search(r'\d{44}', bloco)
+                        if m_chave:
+                            nfa.chave_acesso = m_chave.group(0)
+
+                        # Partes (Remetente, Destinatário, Transportador)
+                        def extrair_parte_flex(termo_inicio, proximo_bloco, texto):
+                            # Procura o termo de início (ex: REMETENTE)
+                            match_start = re.search(termo_inicio, texto, re.IGNORECASE)
+                            if not match_start: return Parte()
+
+                            # Texto a partir do início
+                            sub = texto[match_start.end():]
+
+                            # Procura o próximo bloco para delimitar
+                            match_end = re.search(proximo_bloco, sub, re.IGNORECASE)
+                            if match_end: sub = sub[:match_end.start()]
+
+                            # Extrai informações da linha
+                            # Formato: NOME IE CPF/CNPJ MUNICIPIO
+                            linhas = [l.strip() for l in sub.split('\n') if l.strip()]
+                            p = Parte()
+                            if len(linhas) > 1:
+                                # Pula o cabeçalho (ex: INSCRIÇÃO ESTADUAL...) e pega os dados na próxima linha
+                                dados = linhas[1]
+                                # Tenta capturar CPF/CNPJ
+                                m_id = REGEX['cpf_ou_cnpj'].search(sub)
+                                if m_id: p.cpf_cnpj = m_id.group(1)
+
+                                # O nome costuma ser o início da linha antes dos números
+                                p.nome = re.split(r'\d', dados)[0].strip()
+                            elif linhas:
+                                p.nome = linhas[0].strip()
+                            return p
+
+                        nfa.remetente = extrair_parte_flex("REMETENTE", "DESTINAT.RIO", bloco)
+                        nfa.destinatario = extrair_parte_flex("DESTINAT.RIO", "TRANSPORTADOR", bloco)
+
+                        # Itens / Produtos
+                        for line in bloco.split('\n'):
+                            m_prod = REGEX['produto'].search(line)
+                            if m_prod:
+                                prod = Produto(
+                                    codigo=m_prod.group(1),
+                                    descricao=m_prod.group(2).strip(),
+                                    quantidade=float(m_prod.group(3).replace('.','').replace(',','.')),
+                                    vlr_unitario=float(m_prod.group(4).replace('.','').replace(',','.')),
+                                    vlr_icms=float(m_prod.group(5).replace('.','').replace(',','.')),
+                                    vlr_total=float(m_prod.group(6).replace('.','').replace(',','.'))
+                                )
+                                nfa.produtos.append(prod)
+
+                        nfa.quantidade_total = sum(p.quantidade for p in nfa.produtos)
+                        nfa.valor_total = sum(p.vlr_total for p in nfa.produtos)
+                        nfa.valor_icms = sum(p.vlr_icms for p in nfa.produtos)
+
+                        if nfa.numero:
+                            notas.append(nfa)
+                    except Exception as e:
+                        logger.warning(f"Erro ao processar bloco de nota: {e}")
+                        continue
+
+            t_elapsed = time.time() - t0
+            logger.info(f"[PDF EXTRACT OTI] {t_elapsed:.1f}s — {paginas_processadas}/{total_paginas} pag — {len(notas)} notas")
 
     except Exception as e:
         logger.error(f"Erro ao abrir PDF {caminho_pdf}: {e}")
-    
-    return notas, nome_produtor, cpf_produtor
+
+    # Salva no cache antes de retornar
+    resultado = (notas, nome_produtor, cpf_produtor)
+    if pdf_hash:
+        _cache_extracoes[pdf_hash] = resultado
+        logger.info(f"[CACHE SAVE] PDF armazenado em cache")
+
+    return resultado
 
 def resumo_geral(notas: List[NFA], nome_contribuinte: str = "") -> Dict[str, Any]:
     """Gera métricas consolidadas exigidas pelo dashboard e relatórios."""

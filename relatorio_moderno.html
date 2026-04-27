@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório de Auditoria NFA</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* ─── SIDEBAR ─── */
+        .sidebar {
+            width: 280px;
+            background-color: #2d3436;
+            color: #ecf0f1;
+            padding: 40px 30px;
+            box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+
+        .sidebar-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #95a5a6;
+            margin-bottom: 20px;
+            margin-top: 30px;
+        }
+
+        .sidebar-title:first-child {
+            margin-top: 0;
+        }
+
+        .metadata-item {
+            margin-bottom: 16px;
+        }
+
+        .metadata-label {
+            font-size: 11px;
+            color: #bdc3c7;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
+        .metadata-value {
+            font-size: 14px;
+            color: #ecf0f1;
+            font-weight: 500;
+            word-break: break-word;
+        }
+
+        .metadata-badge {
+            display: inline-block;
+            background-color: #27ae60;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .metadata-badge.warning {
+            background-color: #f39c12;
+        }
+
+        .metadata-badge.danger {
+            background-color: #e74c3c;
+        }
+
+        /* ─── MAIN CONTENT ─── */
+        .main {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+        }
+
+        .header {
+            margin-bottom: 40px;
+        }
+
+        .header-title {
+            font-size: 32px;
+            font-weight: 700;
+            color: #2d3436;
+            margin-bottom: 8px;
+        }
+
+        .header-subtitle {
+            font-size: 14px;
+            color: #7f8c8d;
+            font-weight: 400;
+        }
+
+        /* ─── CARDS ─── */
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            transition: box-shadow 0.3s ease, transform 0.3s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2d3436;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 12px;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: #95a5a6;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, #f5f7fa 0%, #ecf0f1 100%);
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #7f8c8d;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #2d3436;
+        }
+
+        /* ─── TABLES ─── */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+
+        thead {
+            background-color: #f5f7fa;
+        }
+
+        th {
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 700;
+            color: #2d3436;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        td {
+            padding: 14px 16px;
+            font-size: 13px;
+            color: #555;
+            border-bottom: 1px solid #ecf0f1;
+        }
+
+        tbody tr {
+            transition: background-color 0.2s ease;
+        }
+
+        tbody tr:hover {
+            background-color: #f9fafb;
+        }
+
+        tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .table-rounded {
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid #ecf0f1;
+        }
+
+        .table-rounded th:first-child {
+            border-top-left-radius: 8px;
+        }
+
+        .table-rounded th:last-child {
+            border-top-right-radius: 8px;
+        }
+
+        /* ─── BADGES E LABELS ─── */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge.success {
+            background-color: #d5f4e6;
+            color: #27ae60;
+        }
+
+        .badge.warning {
+            background-color: #fdebd0;
+            color: #e67e22;
+        }
+
+        .badge.danger {
+            background-color: #fadbd8;
+            color: #c0392b;
+        }
+
+        .badge.info {
+            background-color: #d6eaf8;
+            color: #2980b9;
+        }
+
+        /* ─── SEÇÃO DE ANÁLISE ─── */
+        .analysis-section {
+            background: linear-gradient(135deg, #f5f7fa 0%, #ecf0f1 100%);
+            border-left: 4px solid #2980b9;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #555;
+        }
+
+        .analysis-section strong {
+            color: #2d3436;
+        }
+
+        /* ─── TIMELINE ─── */
+        .timeline {
+            margin-top: 16px;
+        }
+
+        .timeline-item {
+            display: flex;
+            margin-bottom: 16px;
+            align-items: flex-start;
+        }
+
+        .timeline-dot {
+            width: 12px;
+            height: 12px;
+            background-color: #2980b9;
+            border-radius: 50%;
+            margin-top: 4px;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .timeline-content {
+            flex: 1;
+        }
+
+        .timeline-time {
+            font-size: 12px;
+            font-weight: 600;
+            color: #2980b9;
+        }
+
+        .timeline-text {
+            font-size: 13px;
+            color: #555;
+            margin-top: 4px;
+        }
+
+        /* ─── FOOTER ─── */
+        .footer {
+            text-align: center;
+            padding: 20px 0;
+            border-top: 1px solid #ecf0f1;
+            margin-top: 20px;
+            font-size: 12px;
+            color: #95a5a6;
+        }
+
+        /* ─── RESPONSIVIDADE ─── */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 30px 20px;
+                border-bottom: 1px solid #ecf0f1;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 20px;
+            }
+
+            .main {
+                padding: 30px 20px;
+            }
+
+            .header-title {
+                font-size: 24px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 480px) {
+            .card {
+                padding: 16px;
+                margin-bottom: 16px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-title">Status</div>
+            <div class="metadata-item">
+                <div class="metadata-label">Situação</div>
+                <div class="metadata-value">
+                    <span class="metadata-badge">Concluído</span>
+                </div>
+            </div>
+
+            <div class="sidebar-title">Documento</div>
+            <div class="metadata-item">
+                <div class="metadata-label">ID da Auditoria</div>
+                <div class="metadata-value">AUD-2026-001</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Data de Emissão</div>
+                <div class="metadata-value">27 de Abril, 2026</div>
+            </div>
+
+            <div class="sidebar-title">Contribuinte</div>
+            <div class="metadata-item">
+                <div class="metadata-label">Nome</div>
+                <div class="metadata-value">Fazenda Boa Vista</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">CNPJ</div>
+                <div class="metadata-value">12.345.678/0001-90</div>
+            </div>
+
+            <div class="sidebar-title">Performance</div>
+            <div class="metadata-item">
+                <div class="metadata-label">Tempo Total</div>
+                <div class="metadata-value">9.5 segundos</div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Modelo IA</div>
+                <div class="metadata-value">Claude Haiku</div>
+            </div>
+
+            <div class="sidebar-title">Risco</div>
+            <div class="metadata-item">
+                <div class="metadata-label">Nível</div>
+                <div class="metadata-value">
+                    <span class="metadata-badge warning">Médio</span>
+                </div>
+            </div>
+            <div class="metadata-item">
+                <div class="metadata-label">Score</div>
+                <div class="metadata-value">6.2 / 10</div>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main">
+            <div class="header">
+                <h1 class="header-title">Relatório de Auditoria NFA</h1>
+                <p class="header-subtitle">Análise automatizada de Notas Fiscais Agropecuárias com IA</p>
+            </div>
+
+            <!-- RESUMO EXECUTIVO -->
+            <div class="card">
+                <h2 class="card-title">Resumo Executivo</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-label">Notas Processadas</div>
+                        <div class="stat-value">175</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Valor Total</div>
+                        <div class="stat-value">R$ 3.7M</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Anomalias</div>
+                        <div class="stat-value">4</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-label">Conformidade</div>
+                        <div class="stat-value">97.7%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ANÁLISE TÉCNICA -->
+            <div class="card">
+                <h2 class="card-title">Análise Técnica</h2>
+                <p class="card-subtitle">Veredito do Auditor Fiscal</p>
+                <div class="analysis-section">
+                    <strong>Parecer Técnico Rápido</strong>
+                    <p style="margin-top: 8px;">
+                        As notas fiscais processadas apresentam <strong>consistência geral satisfatória</strong> com
+                        conformidade de 97.7%. Foram identificadas 4 anomalias de baixo risco relacionadas a variações
+                        documentais menores. Recomenda-se revisão da documentação de suporte para as operações sinalizadas.
+                        Não há indicativos de fraude ou malversação.
+                    </p>
+                </div>
+            </div>
+
+            <!-- HISTÓRICO DE PROCESSAMENTO -->
+            <div class="card">
+                <h2 class="card-title">Timeline de Processamento</h2>
+                <div class="timeline">
+                    <div class="timeline-item">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-time">0.0s - Upload Iniciado</div>
+                            <div class="timeline-text">Arquivo PDF de 175 notas recebido (3.7 MB)</div>
+                        </div>
+                    </div>
+                    <div class="timeline-item">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-time">6.4s - Extração Completa</div>
+                            <div class="timeline-text">175 notas fiscais extraídas com sucesso</div>
+                        </div>
+                    </div>
+                    <div class="timeline-item">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-time">7.8s - Análise IA Iniciada</div>
+                            <div class="timeline-text">Claude Haiku processando com fallback automático ativo</div>
+                        </div>
+                    </div>
+                    <div class="timeline-item">
+                        <div class="timeline-dot"></div>
+                        <div class="timeline-content">
+                            <div class="timeline-time">9.5s - Relatório Gerado</div>
+                            <div class="timeline-text">PDF de laudo concluído e armazenado</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TABELA DE ANOMALIAS -->
+            <div class="card">
+                <h2 class="card-title">Anomalias Detectadas</h2>
+                <div class="table-container">
+                    <table class="table-rounded">
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Descrição</th>
+                                <th>Severidade</th>
+                                <th>Notas Afetadas</th>
+                                <th>Ação</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Data Futura</strong></td>
+                                <td>Documento com data posterior à data de processamento</td>
+                                <td><span class="badge warning">Aviso</span></td>
+                                <td>2</td>
+                                <td>Verificar</td>
+                            </tr>
+                            <tr>
+                                <td><strong>CAPS Zerado</strong></td>
+                                <td>Quantidade de animais registrada como zero</td>
+                                <td><span class="badge danger">Crítico</span></td>
+                                <td>1</td>
+                                <td>Esclarecer</td>
+                            </tr>
+                            <tr>
+                                <td><strong>ICMS Inconsistente</strong></td>
+                                <td>Variação no cálculo de ICMS detectada</td>
+                                <td><span class="badge warning">Aviso</span></td>
+                                <td>1</td>
+                                <td>Revisar</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Documentação Incompleta</strong></td>
+                                <td>Falta de suporte documental comprobatório</td>
+                                <td><span class="badge info">Info</span></td>
+                                <td>1</td>
+                                <td>Acompanhar</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- RECOMENDAÇÕES -->
+            <div class="card">
+                <h2 class="card-title">Recomendações</h2>
+                <div style="margin-top: 16px;">
+                    <div style="margin-bottom: 16px; padding: 12px; background: #fdebd0; border-radius: 8px; border-left: 4px solid #e67e22;">
+                        <strong style="color: #2d3436;">1. Validação Documental</strong>
+                        <p style="margin-top: 4px; font-size: 13px; color: #555;">
+                            Solicitar apresentação de documentação complementar para as notas sinalizadas.
+                        </p>
+                    </div>
+                    <div style="margin-bottom: 16px; padding: 12px; background: #fdebd0; border-radius: 8px; border-left: 4px solid #e67e22;">
+                        <strong style="color: #2d3436;">2. Alinhamento de Procedimentos</strong>
+                        <p style="margin-top: 4px; font-size: 13px; color: #555;">
+                            Revisar processos de emissão para evitar inconsistências de CAPS e ICMS.
+                        </p>
+                    </div>
+                    <div style="margin-bottom: 16px; padding: 12px; background: #d5f4e6; border-radius: 8px; border-left: 4px solid #27ae60;">
+                        <strong style="color: #2d3436;">3. Continuidade de Monitoramento</strong>
+                        <p style="margin-top: 4px; font-size: 13px; color: #555;">
+                            Manter auditoria periódica trimestral. Sistema apresenta conformidade satisfatória.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ASSINATURA -->
+            <div class="card">
+                <h2 class="card-title">Certificação</h2>
+                <div style="margin-top: 16px; padding: 20px; background: #f5f7fa; border-radius: 8px; text-align: center;">
+                    <p style="font-size: 13px; color: #555; margin-bottom: 12px;">
+                        <strong>ORGATEC Sovereign Shield</strong>
+                    </p>
+                    <p style="font-size: 12px; color: #7f8c8d;">
+                        Análise Automatizada com IA | Processamento em Tempo Real | Conformidade Fiscal
+                    </p>
+                    <p style="font-size: 11px; color: #95a5a6; margin-top: 12px;">
+                        Relatório gerado automaticamente em 27 de Abril, 2026
+                    </p>
+                </div>
+            </div>
+
+            <footer class="footer">
+                <p>© 2026 ORGATEC IA. Todos os direitos reservados. | Relatório Confidencial</p>
+            </footer>
+        </main>
+    </div>
+</body>
+</html>

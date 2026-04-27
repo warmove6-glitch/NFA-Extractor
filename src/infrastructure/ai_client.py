@@ -271,23 +271,36 @@ Retorne em JSON estruturado.
 def analisar_producao(notas: list[NFA], callback=None, system_override: str = None,
                      nome_produtor: str = "") -> str:
     """
-    Modo PRODUÇÃO (2026): Claude Haiku (primário) → Sonnet (fallback).
+    Modo PRODUÇÃO OTIMIZADO (2026): Análise em paralelo com chunks.
 
-    Estratégia: Haiku é 2-3x mais rápido; fallback automático se falhar.
-    Timeout: 15s (suficiente para ambos os modelos).
+    Otimizações:
+    - Divide notas em chunks de 50 (análise em paralelo)
+    - Combine resultados para veredito consolidado
+    - Claude Haiku (2-3x mais rápido) → Fallback Sonnet
+    - Timeout: 15s total
     """
     import threading
     import time
-
-    prompt = _montar_prompt(notas)
-    if nome_produtor:
-        prompt = f"PRODUTOR: {nome_produtor}\n\n" + prompt
-
-    sys = system_override or SYSTEM_GAMA
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     api_key = _carregar_env('ANTHROPIC_API_KEY')
-    if api_key and api_key.startswith('sk-ant'):
-        if callback: callback("[PRODUÇÃO] Claude Haiku (rápido) com fallback Sonnet...\n")
+    if not (api_key and api_key.startswith('sk-ant')):
+        logger.error("Claude API key não configurada.")
+        return "[ERRO] Claude não disponível — configure ANTHROPIC_API_KEY."
+
+    if callback:
+        callback(f"[PARALELO] Analisando {len(notas)} notas em chunks...\n")
+
+    # Divide em chunks para análise paralela
+    tamanho_chunk = 50
+    chunks = [notas[i:i+tamanho_chunk] for i in range(0, len(notas), tamanho_chunk)]
+
+    if len(chunks) == 1:
+        # Uma única nota/pequeno lote — análise direta
+        prompt = _montar_prompt(notas)
+        if nome_produtor:
+            prompt = f"PRODUTOR: {nome_produtor}\n\n" + prompt
+        sys = system_override or SYSTEM_GAMA
 
         resultado = {'res': None, 'modelo': None, 'done': False}
 
@@ -307,14 +320,56 @@ def analisar_producao(notas: list[NFA], callback=None, system_override: str = No
 
         if resultado['done'] and resultado['res']:
             res = resultado['res']
-            modelo = resultado['modelo']
             if "[Claude Falhou" not in res and "[Claude Error" not in res:
-                logger.info(f"✅  Análise concluída com {modelo}")
+                logger.info(f"✅ Análise rápida com {resultado['modelo']}")
                 return res
 
-        logger.error("Análise falhou: Claude indisponível.")
-        return "[ERRO] Análise indisponível: Claude não respondeu."
+        return "[ERRO] Análise indisponível."
 
-    logger.error("Análise falhou: Claude API key não configurada.")
-    return "[ERRO] Claude não disponível — configure ANTHROPIC_API_KEY."
+    # Múltiplos chunks — análise paralela
+    sys = system_override or SYSTEM_GAMA
+    analises = {}
+    t0 = time.time()
+
+    def analisar_chunk(chunk_id, chunk):
+        """Analisa um chunk de notas."""
+        prompt = _montar_prompt(chunk)
+        if chunk_id == 0 and nome_produtor:
+            prompt = f"PRODUTOR: {nome_produtor}\n\n" + prompt
+        try:
+            res, modelo = _analisar_claude(prompt, sys)
+            return chunk_id, res, modelo
+        except Exception as e:
+            return chunk_id, f"[Erro chunk {chunk_id}: {e}]", "nenhum"
+
+    # Executa chunks em paralelo (máx 3 threads para não sobrecarregar API)
+    com_timeout = min(15, 15 / max(1, len(chunks)))  # Distribuir timeout entre chunks
+    with ThreadPoolExecutor(max_workers=min(3, len(chunks))) as executor:
+        futures = [
+            executor.submit(analisar_chunk, i, chunk)
+            for i, chunk in enumerate(chunks)
+        ]
+
+        for future in as_completed(futures, timeout=15):
+            try:
+                chunk_id, res, modelo = future.result()
+                analises[chunk_id] = res
+                if callback:
+                    callback(f"[Chunk {chunk_id+1}/{len(chunks)}] Pronto ({modelo})\n")
+            except Exception as e:
+                logger.warning(f"Erro em chunk: {e}")
+
+    t_elapsed = time.time() - t0
+    logger.info(f"⏱️ [ANÁLISE PARALELA] {t_elapsed:.1f}s — {len(analises)}/{len(chunks)} chunks")
+
+    if not analises:
+        return "[ERRO] Nenhum chunk foi analisado."
+
+    # Combina resultados dos chunks
+    veredito_consolidado = "ANÁLISE CONSOLIDADA:\n\n"
+    for i in sorted(analises.keys()):
+        veredito_consolidado += f"--- Lote {i+1} ---\n{analises[i]}\n\n"
+
+    logger.info(f"✅ Análise paralela concluída em {t_elapsed:.1f}s")
+    return veredito_consolidado
 

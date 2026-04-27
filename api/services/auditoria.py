@@ -90,6 +90,7 @@ async def processar_lote_auditoria(
     client_name: str,
     client_cpf: str,
     modo_relatorio: str = 'simples',  # 'simples' ou 'detalhado'
+    formato_relatorio: str = 'pdf',  # 'pdf' (ReportLab) ou 'html' (moderno)
 ):
     """
     Processo em background seguindo a diretriz AudiOrg de escalabilidade.
@@ -223,11 +224,12 @@ Nota: Análise detalhada indisponível (timeout). Recomenda-se reprocessamento p
                 risco_nivel=nivel_risco,
                 score_risco=score_risco,
                 modo_relatorio=modo_relatorio,
+                formato=formato_relatorio,
             )
             t_pdf = time.time() - t_pdf_start
-            logger.info(f"⏱️  [PDF TOTAL] {t_pdf:.1f}s — {modo_relatorio}")
-            _log_tempo("PDF GERADO")
-            logger.info(f"Relatorio PDF gerado: {pdf_path}")
+            logger.info(f"⏱️  [{formato_relatorio.upper()} TOTAL] {t_pdf:.1f}s — {modo_relatorio}")
+            _log_tempo(f"{formato_relatorio.upper()} GERADO")
+            logger.info(f"Relatorio {formato_relatorio} gerado: {pdf_path}")
         except Exception as e_pdf:
             logger.error(f"Erro critico ao gerar PDF: {e_pdf}")
             tasks_status[task_id] = {

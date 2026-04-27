@@ -23,21 +23,28 @@ from src.domain.extractor import NFA, resumo_geral
 
 LOGO_PATH = str(Path(__file__).parent / 'assets' / 'logo.png')
 
-# ── Paleta de cores ────────────────────────────────────────────────────────────
-AZUL_ESC   = colors.HexColor(hex_cor('BG2'))
-AZUL_MED   = colors.HexColor(hex_cor('PRIMARY'))
-AZUL_CLAR  = colors.HexColor(hex_cor('BG4'))
-VERDE      = colors.HexColor(hex_cor('GREEN'))
-VERDE_CLAR = colors.HexColor('#D5F5E3')
-LARANJA    = colors.HexColor(hex_cor('ORANGE'))
-VERMELHO   = colors.HexColor(hex_cor('RED'))
-VERM_CLAR  = colors.HexColor('#FDECEA')
-LARANJ_CLAR= colors.HexColor('#FEF3C7')
-CYAN       = colors.HexColor(hex_cor('CYAN'))
-CINZA      = colors.HexColor(hex_cor('GRAY'))
-CINZA_CLAR = colors.HexColor('#F1F5F9')
+# ── Paleta de cores (Design Moderno) ──────────────────────────────────────────
+SIDEBAR    = colors.HexColor('#2d3436')  # Cinza escuro para sidebar
+PRIMARIO   = colors.HexColor('#3b82f6')  # Azul moderno
+PRIMARIO_LIGHT = colors.HexColor('#dbeafe')  # Azul claro
+VERDE      = colors.HexColor('#10b981')
+VERDE_CLAR = colors.HexColor('#d1fae5')
+LARANJA    = colors.HexColor('#f59e0b')
+VERMELHO   = colors.HexColor('#ef4444')
+VERM_CLAR  = colors.HexColor('#fee2e2')
+LARANJ_CLAR= colors.HexColor('#fef3c7')
+CINZA_ESC  = colors.HexColor('#4b5563')
+CINZA_MED  = colors.HexColor('#94a3b8')
+CINZA_CLAR = colors.HexColor('#f8fafc')
+BORDER     = colors.HexColor('#e2e8f0')
 BRANCO     = colors.white
-TEXTO      = colors.black
+TEXTO      = colors.HexColor('#1e293b')
+
+# Legacy colors para compatibilidade
+AZUL_ESC   = SIDEBAR
+AZUL_MED   = PRIMARIO
+AZUL_CLAR  = PRIMARIO_LIGHT
+CINZA      = CINZA_MED
 
 W, H = A4
 
@@ -60,31 +67,43 @@ _RISCO_FG = {
 def _header_footer(canvas, doc):
     import os
     canvas.saveState()
-    canvas.setFillColor(AZUL_ESC)
-    canvas.rect(0, H - 1.8*cm, W, 1.8*cm, fill=1, stroke=0)
-    logo_sz = 1.35*cm
+    # Header minimalista
+    canvas.setFillColor(BRANCO)
+    canvas.rect(0, H - 1.6*cm, W, 1.6*cm, fill=1, stroke=0)
+    # Linha decorativa em azul
+    canvas.setFillColor(PRIMARIO)
+    canvas.rect(0, H - 1.6*cm, W, 0.08*cm, fill=1, stroke=0)
+
+    logo_sz = 1.0*cm
     if os.path.exists(LOGO_PATH):
-        canvas.drawImage(LOGO_PATH, 0.3*cm, H - 1.65*cm,
+        canvas.drawImage(LOGO_PATH, 0.5*cm, H - 1.45*cm,
                          width=logo_sz, height=logo_sz,
                          preserveAspectRatio=True, mask='auto')
-    canvas.setFillColor(BRANCO)
-    canvas.setFont('Helvetica-Bold', 11)
-    canvas.drawString(1.9*cm, H - 1.1*cm, 'OrgAudi — SEFAZ')
+
+    canvas.setFillColor(SIDEBAR)
+    canvas.setFont('Helvetica-Bold', 12)
+    canvas.drawString(1.7*cm, H - 0.9*cm, 'OrgAudi')
     canvas.setFont('Helvetica', 8)
-    canvas.setFillColor(colors.HexColor('#A9CCE3'))
-    canvas.drawString(1.9*cm, H - 1.55*cm, 'OrgAudi · Análise de Notas Fiscais Avulsas')
-    canvas.setFillColor(BRANCO)
-    canvas.drawRightString(W - 1.5*cm, H - 1.1*cm,
-        f'Gerado em {datetime.now().strftime("%d/%m/%Y %H:%M")}')
-    # Rodapé
-    canvas.setFillColor(AZUL_ESC)
-    canvas.rect(0, 0, W, 0.9*cm, fill=1, stroke=0)
-    canvas.setFillColor(BRANCO)
+    canvas.setFillColor(CINZA_MED)
+    canvas.drawString(1.7*cm, H - 1.25*cm, 'Auditoria de Notas Fiscais Agropecuárias')
+
     canvas.setFont('Helvetica', 8)
-    canvas.drawString(1.5*cm, 0.3*cm, 'OrgAudi')
-    canvas.drawCentredString(W/2, 0.3*cm, f'Página {doc.page}')
-    canvas.setFillColor(colors.HexColor('#A9CCE3'))
-    canvas.drawRightString(W - 1.5*cm, 0.3*cm, 'OrgAudi — Sistema de Auditoria Agronegócio')
+    canvas.setFillColor(CINZA_MED)
+    canvas.drawRightString(W - 1.5*cm, H - 0.9*cm,
+        f'{datetime.now().strftime("%d/%m/%Y")}')
+
+    # Rodapé minimalista
+    canvas.setFillColor(CINZA_CLAR)
+    canvas.rect(0, 0, W, 0.8*cm, fill=1, stroke=0)
+    canvas.setLineWidth(0.5)
+    canvas.setStrokeColor(BORDER)
+    canvas.line(0, 0.8*cm, W, 0.8*cm)
+
+    canvas.setFillColor(CINZA_MED)
+    canvas.setFont('Helvetica', 7)
+    canvas.drawString(1.5*cm, 0.35*cm, 'OrgAudi — Sistema Soberano')
+    canvas.drawCentredString(W/2, 0.35*cm, f'Página {doc.page}')
+    canvas.drawRightString(W - 1.5*cm, 0.35*cm, 'Relatório Técnico de Auditoria')
     canvas.restoreState()
 
 
@@ -94,44 +113,50 @@ def _estilos():
     base = getSampleStyleSheet()
     return {
         'tit':    ParagraphStyle('Tit',    parent=base['Heading1'],
-                                 alignment=TA_CENTER, fontSize=16,
-                                 textColor=AZUL_ESC, spaceAfter=16),
+                                 alignment=TA_LEFT, fontSize=18,
+                                 textColor=SIDEBAR, spaceAfter=12,
+                                 fontName='Helvetica-Bold'),
         'sec':    ParagraphStyle('Sec',    parent=base['Heading2'],
-                                 fontSize=11, textColor=AZUL_MED,
-                                 spaceBefore=14, spaceAfter=8),
+                                 fontSize=11, textColor=SIDEBAR,
+                                 spaceBefore=12, spaceAfter=8,
+                                 fontName='Helvetica-Bold'),
         'txt':    ParagraphStyle('Txt',    parent=base['Normal'],
-                                 fontSize=9, leading=13),
+                                 fontSize=9, leading=13, textColor=TEXTO),
         'bullet': ParagraphStyle('Bul',    parent=base['Normal'],
-                                 fontSize=9, leading=13, leftIndent=12),
+                                 fontSize=9, leading=13, leftIndent=12,
+                                 textColor=TEXTO),
         'small':  ParagraphStyle('Small',  parent=base['Normal'],
-                                 fontSize=8, leading=10),
+                                 fontSize=8, leading=10, textColor=CINZA_MED),
         'center': ParagraphStyle('Ctr',    parent=base['Normal'],
-                                 fontSize=9, alignment=TA_CENTER),
+                                 fontSize=9, alignment=TA_CENTER, textColor=TEXTO),
         'th':     ParagraphStyle('TH',     fontName='Helvetica-Bold',
                                  fontSize=8, textColor=BRANCO,
                                  alignment=TA_CENTER),
         'td':     ParagraphStyle('TD',     fontName='Helvetica',
-                                 fontSize=8, leading=10),
+                                 fontSize=8, leading=10, textColor=TEXTO),
     }
 
 
 def _estilo_tabela_base(t: Table, n_rows: int, total_row: bool = False):
     style = [
-        ('BACKGROUND',    (0, 0), (-1, 0), AZUL_MED),
+        ('BACKGROUND',    (0, 0), (-1, 0), PRIMARIO),
         ('TEXTCOLOR',     (0, 0), (-1, 0), BRANCO),
         ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE',      (0, 0), (-1, -1), 8),
         ('ROWBACKGROUNDS',(0, 1), (-1, -1), [BRANCO, CINZA_CLAR]),
-        ('TOPPADDING',    (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 5),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 5),
-        ('LINEBELOW',     (0, 0), (-1, -1), 0.4, colors.HexColor('#CBD5E1')),
+        ('TOPPADDING',    (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 6),
+        ('LINEBELOW',     (0, 0), (-1, -1), 0.5, BORDER),
+        ('LINEBEFORE',    (0, 0), (-1, -1), 0.5, BORDER),
+        ('LINEAFTER',     (0, 0), (-1, -1), 0.5, BORDER),
+        ('LINEABOVE',     (0, 0), (-1, 0), 0.5, BORDER),
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
     ]
     if total_row and n_rows > 1:
         style += [
-            ('BACKGROUND', (0, n_rows - 1), (-1, n_rows - 1), AZUL_ESC),
+            ('BACKGROUND', (0, n_rows - 1), (-1, n_rows - 1), PRIMARIO),
             ('TEXTCOLOR',  (0, n_rows - 1), (-1, n_rows - 1), BRANCO),
             ('FONTNAME',   (0, n_rows - 1), (-1, n_rows - 1), 'Helvetica-Bold'),
         ]
@@ -142,21 +167,25 @@ def _estilo_tabela_base(t: Table, n_rows: int, total_row: bool = False):
 
 def _card(label: str, value: str, bg: colors.Color,
           fg_value: colors.Color = None) -> Table:
-    fg = fg_value or AZUL_ESC
+    fg = fg_value or PRIMARIO
     base = getSampleStyleSheet()
     t = Table([
         [Paragraph(f'<font size=7 color="#64748B">{label}</font>',
                    ParagraphStyle('CL', parent=base['Normal'], alignment=TA_CENTER))],
-        [Paragraph(f'<b><font size=12 color="{fg.hexval()}">{value}</font></b>',
+        [Paragraph(f'<b><font size=13 color="{fg.hexval()}">{value}</font></b>',
                    ParagraphStyle('CV', parent=base['Normal'], alignment=TA_CENTER))],
     ], colWidths=['100%'])
     t.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, -1), bg),
-        ('TOPPADDING',    (0, 0), (-1, -1), 7),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 5),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 5),
-        ('ROUNDEDCORNERS',(0, 0), (-1, -1), [5, 5, 5, 5]),
+        ('TOPPADDING',    (0, 0), (-1, -1), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
+        ('ROUNDEDCORNERS',(0, 0), (-1, -1), [8, 8, 8, 8]),
+        ('LINEABOVE',     (0, 0), (-1, -1), 1, BORDER),
+        ('LINEBELOW',     (0, 0), (-1, -1), 1, BORDER),
+        ('LINELEFT',      (0, 0), (-1, -1), 1, BORDER),
+        ('LINERIGHT',     (0, 0), (-1, -1), 1, BORDER),
     ]))
     return t
 
@@ -222,7 +251,7 @@ def _render_markdown(texto: str, st: dict) -> list:
 
 # ── Tabelas de dados ───────────────────────────────────────────────────────────
 
-def _tabela_natureza(res: dict, st: dict, usable_w: float) -> Table:
+def _tabela_natureza(res: dict, st: dict, usable_w: float, max_rows: int = None) -> Table:
     total_val = res['total_valor'] or 1
     total_cab = res['total_cabecas'] or 1
     total_not = res['total_notas'] or 1
@@ -235,7 +264,11 @@ def _tabela_natureza(res: dict, st: dict, usable_w: float) -> Table:
         Paragraph('<b>% Valor</b>', st['th']),
     ]]
     por_nat = res.get('por_natureza', {})
-    for nat, qtd in sorted(por_nat.items(), key=lambda x: -x[1]):
+    nat_sorted = sorted(por_nat.items(), key=lambda x: -x[1])
+    total_naturezas = len(nat_sorted)
+    nat_exibir = nat_sorted[:max_rows] if max_rows else nat_sorted
+
+    for nat, qtd in nat_exibir:
         cab = sum(n.quantidade_total for n in [])  # calculado abaixo via por_categoria
         val_nat = 0.0
         cab_nat = 0.0
@@ -250,6 +283,15 @@ def _tabela_natureza(res: dict, st: dict, usable_w: float) -> Table:
             Paragraph(f'{val_nat/total_val*100:.1f}%', st['td']),
         ])
 
+    if max_rows and total_naturezas > max_rows:
+        rows.append([
+            Paragraph(f'<i>... {total_naturezas - max_rows} mais</i>', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+        ])
+
     w = usable_w
     cols = [w*0.28, w*0.14, w*0.16, w*0.26, w*0.16]
     t = Table(rows, colWidths=cols)
@@ -257,8 +299,10 @@ def _tabela_natureza(res: dict, st: dict, usable_w: float) -> Table:
     return t
 
 
-def _tabela_top_dest(res: dict, st: dict, usable_w: float) -> Table:
-    top = res.get('top_dest', [])[:6]
+def _tabela_top_dest(res: dict, st: dict, usable_w: float, max_rows: int = None) -> Table:
+    top_all = res.get('top_dest', [])
+    max_display = max_rows or 6
+    top = top_all[:max_display]
     total_val = res['total_valor'] or 1
     rows = [[
         Paragraph('<b>#</b>',           st['th']),
@@ -279,6 +323,16 @@ def _tabela_top_dest(res: dict, st: dict, usable_w: float) -> Table:
             Paragraph(f'{share:.1f}%', st['td']),
         ])
 
+    if len(top_all) > max_display:
+        rows.append([
+            Paragraph('', st['td']),
+            Paragraph(f'<i>... {len(top_all) - max_display} mais</i>', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+        ])
+
     w = usable_w
     cols = [w*0.06, w*0.30, w*0.09, w*0.13, w*0.24, w*0.18]
     t = Table(rows, colWidths=cols)
@@ -286,7 +340,7 @@ def _tabela_top_dest(res: dict, st: dict, usable_w: float) -> Table:
     return t
 
 
-def _tabela_mensal(res: dict, st: dict, usable_w: float) -> Table:
+def _tabela_mensal(res: dict, st: dict, usable_w: float, max_rows: int = None) -> Table:
     meses = res.get('por_mes', {})
     if not meses:
         return None
@@ -298,7 +352,11 @@ def _tabela_mensal(res: dict, st: dict, usable_w: float) -> Table:
         Paragraph('<b>Vendas (R$)</b>',     st['th']),
         Paragraph('<b>Remessas (R$)</b>',   st['th']),
     ]]
-    for mes, v in sorted(meses.items()):
+    meses_sorted = sorted(meses.items())
+    total_meses = len(meses_sorted)
+    meses_exibir = meses_sorted[:max_rows] if max_rows else meses_sorted
+
+    for mes, v in meses_exibir:
         rows.append([
             Paragraph(mes, st['td']),
             Paragraph(str(v['notas']), st['td']),
@@ -307,6 +365,17 @@ def _tabela_mensal(res: dict, st: dict, usable_w: float) -> Table:
             Paragraph(f"{v.get('vendas_valor', 0):,.2f}", st['td']),
             Paragraph(f"{v.get('rem_valor', 0):,.2f}", st['td']),
         ])
+
+    if max_rows and total_meses > max_rows:
+        rows.append([
+            Paragraph(f'<i>... {total_meses - max_rows} mais</i>', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+        ])
+
     # Linha de totais
     rows.append([
         Paragraph('<b>TOTAL</b>', st['th']),
@@ -324,7 +393,7 @@ def _tabela_mensal(res: dict, st: dict, usable_w: float) -> Table:
     return t
 
 
-def _tabela_anomalias(anomalias: list, st: dict, usable_w: float) -> Table:
+def _tabela_anomalias(anomalias: list, st: dict, usable_w: float, max_rows: int = None) -> Table:
     header = [[
         Paragraph('<b>NFA</b>',               st['th']),
         Paragraph('<b>Data</b>',              st['th']),
@@ -334,7 +403,10 @@ def _tabela_anomalias(anomalias: list, st: dict, usable_w: float) -> Table:
         Paragraph('<b>Risco Detectado</b>',   st['th']),
     ]]
     data_rows = []
-    for a in anomalias:
+    total_anomalias = len(anomalias)
+    anomalias_exibir = anomalias[:max_rows] if max_rows else anomalias
+
+    for a in anomalias_exibir:
         nivel = str(a.get('Nivel', a.get('nivel', 'MÉDIO'))).upper()
         data_rows.append([
             Paragraph(str(a.get('NFA', '')), st['td']),
@@ -343,6 +415,16 @@ def _tabela_anomalias(anomalias: list, st: dict, usable_w: float) -> Table:
             Paragraph(f"{a.get('Valor', 0):,.2f}", st['td']),
             Paragraph(f'<b>{nivel}</b>', st['td']),
             Paragraph(str(a.get('Motivo', '')), st['td']),
+        ])
+
+    if max_rows and total_anomalias > max_rows:
+        data_rows.append([
+            Paragraph(f'<i>... {total_anomalias - max_rows} mais</i>', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
+            Paragraph('', st['td']),
         ])
 
     w = usable_w
@@ -361,7 +443,8 @@ def _tabela_anomalias(anomalias: list, st: dict, usable_w: float) -> Table:
         ('LINEBELOW',     (0, 0), (-1, -1), 0.4, colors.HexColor('#CBD5E1')),
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
     ]
-    for i, a in enumerate(anomalias, 1):
+    anomalias_check = anomalias_exibir  # Para aplicar estilos
+    for i, a in enumerate(anomalias_check, 1):
         nivel = str(a.get('Nivel', a.get('nivel', 'MÉDIO'))).upper()
         bg = _RISCO_BG.get(nivel, CINZA_CLAR)
         style_cmds.append(('BACKGROUND', (0, i), (-1, i), bg))
@@ -370,7 +453,7 @@ def _tabela_anomalias(anomalias: list, st: dict, usable_w: float) -> Table:
     return t
 
 
-def _tabela_vendas_remessas(res: dict, st: dict, usable_w: float) -> Table:
+def _tabela_vendas_remessas(res: dict, st: dict, usable_w: float, max_rows: int = None) -> Table:
     """Tabela comparativa de vendas vs remessas por categoria."""
     cat = res.get('por_categoria', {})
     total_val = res['total_valor'] or 1
@@ -412,7 +495,7 @@ def _tabela_vendas_remessas(res: dict, st: dict, usable_w: float) -> Table:
     return t
 
 
-def _tabela_resumo_analise(res: dict, st: dict, usable_w: float) -> Table:
+def _tabela_resumo_analise(res: dict, st: dict, usable_w: float, max_rows: int = None) -> Table:
     """Resumo analítico com métricas-chave do lote."""
     rows = [[
         Paragraph('<b>Métrica</b>',        st['th']),
@@ -474,14 +557,36 @@ def gerar_pdf(
     risco_nivel: str = '',
     score_risco: float = 0.0,
     modo_relatorio: str = 'detalhado',
+    formato: str = 'pdf',
 ) -> None:
-    """Gera Laudo Técnico de Auditoria.
+    """Gera Laudo Técnico de Auditoria em PDF ou HTML.
+
+    Args:
+        formato: 'pdf' (ReportLab, padrão) ou 'html' (moderno, Ctrl+P para gerar PDF)
 
     Modos:
     - 'simples': Apenas título, KPIs e parecer IA (rápido ~2s)
     - 'detalhado': Tudo incluindo tabelas detalhadas (padrão ~3-5s)
+
+    Otimizações automáticas:
+    - > 50 notas: força modo 'simples' para manter < 10s
+    - > 100 notas: tabelas limitadas a top 20 registros
     """
+    # Redireciona para HTML se formato='html'
+    if formato == 'html':
+        saida_html = saida.replace('.pdf', '.html') if saida.endswith('.pdf') else saida + '.html'
+        return gerar_html_relatorio(
+            notas, saida_html, analise_ia, nome_contribuinte,
+            cpf_contribuinte, risco_nivel, score_risco, modo_relatorio
+        )
+
     t0 = time.time()
+
+    # Otimização automática para PDFs grandes
+    qtd_notas = len(notas) if notas else 0
+    if qtd_notas > 50 and modo_relatorio == 'detalhado':
+        logger.info(f"[PDF OTI] {qtd_notas} notas > 50 — forçando modo 'simples' (estava '{modo_relatorio}')")
+        modo_relatorio = 'simples'
     usable_w = W - 4*cm  # margens 2cm cada lado
 
     doc = SimpleDocTemplate(
@@ -560,13 +665,16 @@ def gerar_pdf(
     elements.append(Spacer(1, 0.5*cm))
 
     secnum = 1
+    # Limita tabelas para PDFs com >100 notas
+    max_rows_tabelas = 20 if qtd_notas > 100 else None
+
     # ── Seções detalhadas (apenas em modo 'detalhado') ────────────────────────
     if modo_relatorio == 'detalhado':
         # Seção 1: Distribuição por Natureza
         por_nat = res.get('por_natureza', {})
         if por_nat:
             elements.append(Paragraph("1. DISTRIBUIÇÃO POR NATUREZA DE OPERAÇÃO", st['sec']))
-            elements.append(_tabela_natureza(res, st, usable_w))
+            elements.append(_tabela_natureza(res, st, usable_w, max_rows=max_rows_tabelas))
             elements.append(Spacer(1, 0.4*cm))
             secnum += 1
 
@@ -574,7 +682,7 @@ def gerar_pdf(
         top_dest = res.get('top_dest', [])
         if top_dest:
             elements.append(Paragraph(f"{secnum}. PRINCIPAIS DESTINATÁRIOS", st['sec']))
-            elements.append(_tabela_top_dest(res, st, usable_w))
+            elements.append(_tabela_top_dest(res, st, usable_w, max_rows=max_rows_tabelas))
             elements.append(Spacer(1, 0.4*cm))
             secnum += 1
 
@@ -596,13 +704,13 @@ def gerar_pdf(
                 f"Foram identificadas <b>{len(anomalias)}</b> inconsistência(s) no lote auditado.",
                 st['txt']))
             elements.append(Spacer(1, 0.2*cm))
-            elements.append(_tabela_anomalias(anomalias, st, usable_w))
+            elements.append(_tabela_anomalias(anomalias, st, usable_w, max_rows=max_rows_tabelas))
             secnum_det += 1
 
         # Anexo: tabelas analíticas
-        tab_mensal = _tabela_mensal(res, st, usable_w)
-        tab_vnd_rem = _tabela_vendas_remessas(res, st, usable_w)
-        tab_resumo = _tabela_resumo_analise(res, st, usable_w)
+        tab_mensal = _tabela_mensal(res, st, usable_w, max_rows=max_rows_tabelas)
+        tab_vnd_rem = _tabela_vendas_remessas(res, st, usable_w, max_rows=max_rows_tabelas)
+        tab_resumo = _tabela_resumo_analise(res, st, usable_w, max_rows=max_rows_tabelas)
 
         if tab_mensal or tab_vnd_rem or tab_resumo:
             elements.append(PageBreak())
@@ -682,3 +790,380 @@ def _resumo_card(label: str, value: str, bg: colors.Color) -> Table:
 
 def _estilo_tabela(t: Table, n_rows: int, total_row: bool = False):
     _estilo_tabela_base(t, n_rows, total_row)
+
+
+def gerar_html_relatorio(
+    notas: list[NFA],
+    saida: str,
+    analise_ia: str = '',
+    nome_contribuinte: str = '',
+    cpf_contribuinte: str = '',
+    risco_nivel: str = '',
+    score_risco: float = 0.0,
+    modo_relatorio: str = 'detalhado',
+) -> None:
+    """Gera relatório em HTML moderno com design profissional.
+
+    Saída é um arquivo .html que pode ser impresso em PDF via Ctrl+P no navegador.
+    Design: sidebar #2d3436, Inter font, cards brancos com sombras, tabelas com bordas.
+    """
+    t0 = time.time()
+
+    qtd_notas = len(notas) if notas else 0
+    resumo = resumo_geral(notas, nome_contribuinte)
+
+    periodo = "N/A"
+    if notas:
+        try:
+            datas = sorted([n.emissao for n in notas if n.emissao])
+            if datas:
+                periodo = f"{datas[0]} a {datas[-1]}"
+        except Exception:
+            pass
+
+    # Gera tabela de top destinatários (máx 10)
+    top_dest_html = ""
+    top_dest = resumo.get('top_dest', [])[:10]
+    if top_dest:
+        top_dest_html = "<tr>" + "".join([
+            f"<td>{d['nome'][:30]}</td>"
+            f"<td style='text-align:right'>{d['notas']}</td>"
+            f"<td style='text-align:right'>{d['cabecas']:,.0f}</td>"
+            f"<td style='text-align:right'>R$ {d['valor']:,.2f}</td>"
+            for d in top_dest
+        ]) + "</tr>"
+
+    # Gera tabela de natureza
+    por_cat = resumo.get('por_categoria', {})
+    natureza_rows = ""
+    for cat_nome in ['VENDA', 'REMESSA']:
+        cat_data = por_cat.get(cat_nome, {})
+        natureza_rows += (
+            f"<tr>"
+            f"<td>{cat_nome}</td>"
+            f"<td style='text-align:right'>{cat_data.get('notas', 0)}</td>"
+            f"<td style='text-align:right'>{cat_data.get('cabecas', 0):,.0f}</td>"
+            f"<td style='text-align:right'>R$ {cat_data.get('valor', 0):,.2f}</td>"
+            f"</tr>"
+        )
+
+    nivel_risco_upper = (risco_nivel or 'N/A').upper()
+    risco_cor = {'ALTO': '#ef4444', 'MÉDIO': '#f59e0b', 'BAIXO': '#10b981'}.get(nivel_risco_upper, '#94a3b8')
+
+    parecer_html = analise_ia.replace('\n', '<br/>') if analise_ia else "—"
+
+    html = f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laudo de Auditoria - {nome_contribuinte}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+
+        body {{
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f8fafc;
+            color: #1e293b;
+            line-height: 1.6;
+        }}
+
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }}
+
+        .header {{
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 20px;
+        }}
+
+        .header h1 {{
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #1e293b;
+        }}
+
+        .header p {{
+            color: #64748b;
+            font-size: 14px;
+        }}
+
+        .info-box {{
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }}
+
+        .info-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 15px;
+        }}
+
+        .info-item {{
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }}
+
+        .info-item:last-child {{
+            border-bottom: none;
+        }}
+
+        .info-label {{
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }}
+
+        .info-value {{
+            font-size: 16px;
+            font-weight: 600;
+            color: #1e293b;
+            margin-top: 5px;
+        }}
+
+        .kpi-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }}
+
+        .kpi-card {{
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }}
+
+        .kpi-label {{
+            font-size: 12px;
+            font-weight: 600;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }}
+
+        .kpi-value {{
+            font-size: 28px;
+            font-weight: 700;
+            color: #3b82f6;
+        }}
+
+        .section {{
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }}
+
+        .section h2 {{
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #3b82f6;
+            color: #1e293b;
+        }}
+
+        .section h3 {{
+            font-size: 14px;
+            font-weight: 600;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #1e293b;
+        }}
+
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }}
+
+        th {{
+            background: #3b82f6;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            border: none;
+        }}
+
+        td {{
+            padding: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }}
+
+        tr:nth-child(even) {{
+            background: #f8fafc;
+        }}
+
+        tr:hover {{
+            background: #f1f5f9;
+        }}
+
+        .parecer {{
+            background: #f0f9ff;
+            border-left: 4px solid #3b82f6;
+            padding: 15px;
+            border-radius: 4px;
+            line-height: 1.8;
+            font-size: 14px;
+        }}
+
+        .risco-badge {{
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 13px;
+            color: white;
+            background: {risco_cor};
+        }}
+
+        .footer {{
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            color: #64748b;
+            font-size: 12px;
+        }}
+
+        @media print {{
+            body {{
+                background: white;
+            }}
+
+            .container {{
+                max-width: 100%;
+                padding: 0;
+            }}
+
+            .section, .info-box, .kpi-card {{
+                page-break-inside: avoid;
+                box-shadow: none;
+                border: 1px solid #e2e8f0;
+            }}
+
+            @page {{
+                margin: 2cm;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>LAUDO TÉCNICO DE AUDITORIA FISCAL</h1>
+            <p>OrgAudi — Sistema Soberano de Auditoria Fiscal</p>
+        </div>
+
+        <div class="info-box">
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">Cliente Auditado</div>
+                    <div class="info-value">{nome_contribuinte.upper() or '—'}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">CPF/CNPJ</div>
+                    <div class="info-value">{cpf_contribuinte or '—'}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Período</div>
+                    <div class="info-value">{periodo}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">Data de Emissão</div>
+                    <div class="info-value">{datetime.now().strftime('%d/%m/%Y %H:%M')}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="kpi-label">Total de Notas</div>
+                <div class="kpi-value">{resumo['total_notas']}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Cabeças</div>
+                <div class="kpi-value">{resumo['total_cabecas']:,.0f}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Valor Total</div>
+                <div class="kpi-value">R$ {resumo['total_valor']:,.2f}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Ticket Médio</div>
+                <div class="kpi-value">R$ {resumo['ticket_medio']:,.2f}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Score de Risco</div>
+                <div class="kpi-value">{score_risco:.3f}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">Nível de Risco</div>
+                <div class="kpi-value"><span class="risco-badge">{nivel_risco_upper}</span></div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Distribuição por Natureza de Operação</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Natureza</th>
+                        <th style="text-align:right">Notas</th>
+                        <th style="text-align:right">Cabeças</th>
+                        <th style="text-align:right">Valor Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {natureza_rows}
+                </tbody>
+            </table>
+        </div>
+
+        {'<div class="section"><h2>Principais Destinatários</h2><table><thead><tr><th>Destinatário</th><th style="text-align:right">Notas</th><th style="text-align:right">Cabeças</th><th style="text-align:right">Valor Total</th></tr></thead><tbody>' + top_dest_html + '</tbody></table></div>' if top_dest_html else ''}
+
+        <div class="section">
+            <h2>Parecer Técnico e Veredito de Risco</h2>
+            <div class="parecer">
+                {parecer_html}
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Documento gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')} — Para imprimir em PDF, use Ctrl+P no navegador</p>
+        </div>
+    </div>
+</body>
+</html>"""
+
+    with open(saida, 'w', encoding='utf-8') as f:
+        f.write(html)
+
+    t1 = time.time()
+    logger.info(f"⏱️ [HTML RELATÓRIO] {t1-t0:.2f}s — {saida}")
+
