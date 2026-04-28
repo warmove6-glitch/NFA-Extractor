@@ -1,88 +1,106 @@
-import os
-from pathlib import Path
-from sqlalchemy import (
-    create_engine, Column, Integer, String, Float,
-    DateTime, ForeignKey, Text, Boolean, event, UniqueConstraint,
-)
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime, timezone
-import logging
+"""
+ORGATEC — Models SQLAlchemy + Conexão Resiliente.
 
-logging.basicConfig(level=logging.INFO)
+v7.2: SQLAlchemy 2.0 DeclarativeBase, UTC-aware defaults, engine resiliente.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+from sqlalchemy import (
+    Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text,
+    UniqueConstraint, create_engine, event,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
+
 logger = logging.getLogger(__name__)
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """Base declarativa SQLAlchemy 2.0."""
+    pass
 
 
 def _utcnow() -> datetime:
-    """Retorna datetime UTC-aware para uso como default em colunas."""
     return datetime.now(timezone.utc)
 
 
-# ── Modelos ──────────────────────────────────────────────────────────────────
+# ── Models ───────────────────────────────────────────────────────────────────
 
 class User(Base):
     __tablename__ = "users"
-    id              = Column(Integer, primary_key=True, index=True)
-    nome            = Column(String(255), nullable=False)
-    email           = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
-    role            = Column(String(50), default="user")          # "user" | "admin"
-    is_active       = Column(Boolean, default=True)
-    created_at      = Column(DateTime, default=_utcnow)
+
+    id: Mapped[int]              = mapped_column(Integer, primary_key=True, index=True)
+    nome: Mapped[str]            = mapped_column(String(255), nullable=False)
+    email: Mapped[str]           = mapped_column(String(255), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str]            = mapped_column(String(50), default="user")
+    is_active: Mapped[bool]      = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
 
 
 class Cliente(Base):
     __tablename__ = "clientes"
-    id            = Column(Integer, primary_key=True)
-    nome          = Column(String(255), nullable=False)
-    cpf_cnpj      = Column(String(20), unique=True, nullable=False)
-    data_cadastro = Column(DateTime, default=_utcnow)
-    laudos        = relationship("Laudo", back_populates="cliente", cascade="all, delete-orphan")
+
+    id: Mapped[int]              = mapped_column(Integer, primary_key=True)
+    nome: Mapped[str]            = mapped_column(String(255), nullable=False)
+    cpf_cnpj: Mapped[str]       = mapped_column(String(20), unique=True, nullable=False)
+    data_cadastro: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    laudos = relationship("Laudo", back_populates="cliente", cascade="all, delete-orphan")
 
 
 class NotaModel(Base):
     __tablename__ = "notas"
-    id             = Column(Integer, primary_key=True, index=True)
-    chave_acesso   = Column(String(44), unique=True, index=True, nullable=False)
-    numero         = Column(String, index=True)
-    emissao        = Column(String)
-    natureza       = Column(String)
-    laudo_ia       = Column(Text)
-    data_auditoria = Column(DateTime, default=_utcnow)
-    produtos       = relationship("ProdutoModel", back_populates="nota", cascade="all, delete-orphan")
+
+    id: Mapped[int]              = mapped_column(Integer, primary_key=True, index=True)
+    chave_acesso: Mapped[str]    = mapped_column(String(44), unique=True, index=True, nullable=False)
+    numero: Mapped[str | None]   = mapped_column(String, index=True)
+    emissao: Mapped[str | None]  = mapped_column(String)
+    natureza: Mapped[str | None] = mapped_column(String)
+    laudo_ia: Mapped[str | None] = mapped_column(Text)
+    data_auditoria: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    produtos = relationship("ProdutoModel", back_populates="nota", cascade="all, delete-orphan")
+
     __table_args__ = (UniqueConstraint("numero", "emissao", name="uq_nota_numero_emissao"),)
 
 
 class ProdutoModel(Base):
     __tablename__ = "produtos"
-    id        = Column(Integer, primary_key=True, index=True)
-    nota_id   = Column(Integer, ForeignKey("notas.id", ondelete="CASCADE"))
-    codigo    = Column(String)
-    descricao = Column(String)
-    quantidade = Column(Float)
-    vlr_total = Column(Float)
-    nota      = relationship("NotaModel", back_populates="produtos")
+
+    id: Mapped[int]               = mapped_column(Integer, primary_key=True, index=True)
+    nota_id: Mapped[int | None]   = mapped_column(Integer, ForeignKey("notas.id", ondelete="CASCADE"))
+    codigo: Mapped[str | None]    = mapped_column(String)
+    descricao: Mapped[str | None] = mapped_column(String)
+    quantidade: Mapped[float | None] = mapped_column(Float)
+    vlr_total: Mapped[float | None]  = mapped_column(Float)
+
+    nota = relationship("NotaModel", back_populates="produtos")
 
 
 class Laudo(Base):
     __tablename__ = "laudos"
-    id             = Column(Integer, primary_key=True)
-    cliente_id     = Column(Integer, ForeignKey("clientes.id"), nullable=False)
-    data_auditoria = Column(DateTime, default=_utcnow)
-    veredito_ia    = Column(Text)
-    qtd_notas      = Column(Integer)
-    valor_total    = Column(Float)
-    qtd_anomalias  = Column(Integer)
-    pdf_path       = Column(String(500))
-    cliente        = relationship("Cliente", back_populates="laudos")
+
+    id: Mapped[int]              = mapped_column(Integer, primary_key=True)
+    cliente_id: Mapped[int]      = mapped_column(Integer, ForeignKey("clientes.id"), nullable=False)
+    data_auditoria: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    veredito_ia: Mapped[str | None]  = mapped_column(Text)
+    qtd_notas: Mapped[int | None]    = mapped_column(Integer)
+    valor_total: Mapped[float | None] = mapped_column(Float)
+    qtd_anomalias: Mapped[int | None] = mapped_column(Integer)
+    pdf_path: Mapped[str | None]     = mapped_column(String(500))
+
+    cliente = relationship("Cliente", back_populates="laudos")
 
 
 # ── Conexão resiliente ───────────────────────────────────────────────────────
 
 def _carregar_database_url() -> str:
-    """Carrega DATABASE_URL de env vars ou config.env (nunca hardcoded)."""
     db_url = os.getenv("DATABASE_URL", "")
     if db_url:
         return db_url
@@ -92,7 +110,6 @@ def _carregar_database_url() -> str:
         for line in env_path.read_text(encoding="utf-8").splitlines():
             if line.startswith("DATABASE_URL=") and not line.startswith("#"):
                 return line.split("=", 1)[1].strip()
-
     return ""
 
 
@@ -103,7 +120,8 @@ def get_engine():
         try:
             if "postgresql" in db_url:
                 eng = create_engine(db_url, connect_args={"connect_timeout": 5})
-                eng.connect()
+                with eng.connect():
+                    pass
                 logger.info("DB: PostgreSQL conectado.")
                 return eng
         except Exception as exc:
