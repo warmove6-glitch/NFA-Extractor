@@ -1,12 +1,18 @@
 """
-ORGATEC Sovereign API – v7.0
+ORGATEC Sovereign API – v7.1
 Arquitetura: FastAPI + SQLAlchemy + JWT + Clean Architecture
+
+Mudanças v7.1:
+- Lifespan context manager (substitui on_event depreciado)
+- Endpoint /metrics para observabilidade do circuit breaker
+- get_db centralizado
 """
 
 from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,12 +27,24 @@ from src.infrastructure.database_v2 import SessionLocal, Cliente, init_db
 
 logger = logging.getLogger("uvicorn")
 
+
+# ── Lifespan ──────────────────────────────────────────────────────────────────
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Inicialização e shutdown da aplicação."""
+    init_db()
+    logger.info("ORGATEC API v7.1 iniciada")
+    yield
+    logger.info("ORGATEC API v7.1 encerrada")
+
+
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="ORGATEC Sovereign API",
-    version="7.0.0",
+    version="7.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
@@ -44,13 +62,6 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
-
-
-# ── Lifecycle ─────────────────────────────────────────────────────────────────
-@app.on_event("startup")
-async def startup():
-    init_db()
-    logger.info("✅  ORGATEC API v7.0 iniciada")
 
 
 # ── DB Dependency ─────────────────────────────────────────────────────────────
@@ -130,14 +141,28 @@ async def chat_agente(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+# ── Rotas: Métricas IA (protegidas por JWT admin) ────────────────────────────
+router_metrics = APIRouter(prefix="/metrics", tags=["Observabilidade"])
+
+
+@router_metrics.get("/ai")
+def ai_metrics(current_user: TokenData = Depends(get_current_user)):
+    """Retorna métricas do circuit breaker dos provedores de IA."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
+    from src.infrastructure.ai_client import get_ai_metrics
+    return get_ai_metrics()
+
+
 # ── Registro de routers ───────────────────────────────────────────────────────
 app.include_router(auth_router.router)
 app.include_router(auditoria.router)
 app.include_router(router_clientes)
 app.include_router(router_agente)
+app.include_router(router_metrics)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/ping", tags=["Health"])
 async def ping():
-    return {"status": "ok", "version": "7.0.0"}
+    return {"status": "ok", "version": "7.1.0"}
