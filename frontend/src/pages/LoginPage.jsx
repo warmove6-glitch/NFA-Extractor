@@ -25,6 +25,7 @@ export default function LoginPage() {
       });
 
       localStorage.setItem('orgatec_token', res.data.access_token);
+      localStorage.setItem('orgatec_refresh_token', res.data.refresh_token);
       localStorage.setItem('orgatec_user', JSON.stringify(res.data.user));
       navigate('/dashboard');
     } catch (err) {
@@ -104,7 +105,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-400 mt-6">
-          ORGATEC Sovereign Audit · v7.0
+          ORGATEC Sovereign Audit · v7.1
         </p>
       </div>
     </div>
