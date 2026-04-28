@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.routes import auditoria
 from api.routes import auth as auth_router
-from api.routes import clientes, agente, metrics
+from api.routes import clientes, agente, metrics, finance
 from src.infrastructure.database_v2 import init_db
 from src.infrastructure.logging_config import setup_logging, get_logger
 
@@ -68,6 +68,7 @@ app.include_router(auditoria.router)
 app.include_router(clientes.router)
 app.include_router(agente.router)
 app.include_router(metrics.router)
+app.include_router(finance.router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────

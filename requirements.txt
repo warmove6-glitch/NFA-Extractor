@@ -37,3 +37,6 @@ passlib[bcrypt]>=1.7.4
 
 # Migrações
 alembic>=1.13.0
+
+# Supabase
+supabase>=2.0.0
