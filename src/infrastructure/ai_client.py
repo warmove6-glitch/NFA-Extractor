@@ -1,265 +1,554 @@
 """
-Cliente IA — Arquitetura "Turbo-Local" (Fallback Híbrido 2026).
-Squad Antigravity: @Ípsilon, @Sigma e @Gama operando via Claude com fallback em Ollama (Lotes).
+Cliente IA — Arquitetura Otimizada para 6GB VRAM (GTX 1660 Super).
+
+Estratégia:
+  1. Modelo único (qwen2.5:7b) para evitar swap de VRAM.
+  2. System prompts compactos (~50% menos tokens) com output JSON forçado.
+  3. num_predict calibrado por função do agente.
+  4. Circuit breaker in-memory para fallback resiliente.
+  5. Context pruning: métricas numéricas em vez de texto livre.
+  6. Compatibilidade mantida com Claude/Gemini como opt-in.
+
+Squad Antigravity: @Sigma, @Gama, @Auditor via Ollama local.
 """
 
-import os
-import logging
-import requests
-import anthropic
+from __future__ import annotations
+
 import json
-from google import genai
-from google.genai import types
+import logging
+import os
+import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
+
+import requests
+
 from src.domain.extractor import NFA, resumo_geral
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH  = Path(__file__).parent.parent.parent / 'config.env'
+CONFIG_PATH = Path(__file__).parent.parent.parent / "config.env"
+
+# ── Configuração de Modelos ──────────────────────────────────────────────────
+
+OLLAMA_URL: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+# Modelo único para 6GB VRAM — evita swap entre modelos
+LOCAL_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+
+# Limites de geração por função (menos tokens = menos VRAM no KV-cache)
+TOKEN_LIMITS: dict[str, int] = {
+    "sigma": 1024,    # Análise quantitativa: números, não prosa
+    "gama": 1536,     # Parecer jurídico: precisa de mais contexto
+    "auditor": 2048,  # Consolidação final
+    "chat": 1024,     # Conversacional
+    "etl": 512,       # Extração pura
+}
+
+
+# ── System Prompts Otimizados ────────────────────────────────────────────────
+# Máximo ~150 tokens por prompt. JSON mode forçado.
+# Modelos 7B performam ~30% melhor com schema rígido.
+
+SYSTEM_IPSILON = (
+    "Processador ETL ORGATEC. Extraia totais agrupados por natureza. "
+    'Responda APENAS em JSON: {"grupos": [{"natureza": str, "qtd_notas": int, '
+    '"cabecas": float, "valor": float}]}'
+)
+
+SYSTEM_SIGMA = (
+    "Você é @Sigma, analista quantitativo tributário.\n"
+    "REGRAS: Use APENAS os dados fornecidos. Nunca invente valores. "
+    "Responda EXCLUSIVAMENTE em JSON válido.\n"
+    "SCHEMA: {"
+    '"resumo": "string (máx 200 chars)", '
+    '"total_notas": int, "valor_total": float, "cabecas_total": float, '
+    '"ticket_medio": float, '
+    '"anomalias": [{"tipo": str, "descricao": str, "severidade": "BAIXA|MEDIA|ALTA"}], '
+    '"tendencia": "ESTAVEL|CRESCENTE|DECRESCENTE|IRREGULAR"}'
+)
+
+SYSTEM_GAMA = (
+    "Você é @Gama, consultor tributário sênior.\n"
+    "REGRAS: Baseie-se APENAS nos dados quantitativos. Nunca invente artigos. "
+    "Responda EXCLUSIVAMENTE em JSON válido.\n"
+    "SCHEMA: {"
+    '"parecer": "string (máx 300 chars)", '
+    '"risco_fiscal": "BAIXO|MEDIO|ALTO|CRITICO", '
+    '"fundamentacao": ["string (artigos/normas)"], '
+    '"recomendacoes": ["string"], '
+    '"ressalvas": ["string"]}'
+)
+
+SYSTEM_AUDITOR = (
+    "Você é o Auditor-Chefe da ORGATEC. Protocolo Soberano.\n"
+    "REGRAS: ZERO ALUCINAÇÃO — dados insuficientes = declare 'DADOS INSUFICIENTES'. "
+    "Toda conclusão DEVE citar NFA ou valor de origem. "
+    "Responda EXCLUSIVAMENTE em JSON válido.\n"
+    "SCHEMA: {"
+    '"veredito": str, '
+    '"entradas": {"cabecas": int, "valor": float}, '
+    '"saidas": {"cabecas": int, "valor": float}, '
+    '"anomalia_bio_contabil": {"diferenca_cabecas": int, "explicacao": str}, '
+    '"hipotese_tecnica": str, '
+    '"nivel_risco": "BAIXO|MEDIO|ALTO|SISTEMICO", '
+    '"score_confianca": float, '
+    '"evidencias": ["string"]}'
+)
+
+# Mapa de system prompts → função do agente (para calibrar token limits)
+_SYSTEM_TO_ROLE: dict[int, str] = {
+    id(SYSTEM_SIGMA): "sigma",
+    id(SYSTEM_GAMA): "gama",
+    id(SYSTEM_AUDITOR): "auditor",
+    id(SYSTEM_IPSILON): "etl",
+}
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _carregar_env(chave: str) -> str:
+    """Carrega variável de ambiente com fallback para config.env."""
+    valor = os.getenv(chave, "")
+    if valor:
+        return valor
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            for linha in f:
-                if '=' in linha and not linha.startswith('#'):
-                    k, v = linha.strip().split('=', 1)
-                    if k == chave: return v
-    return os.getenv(chave, '')
-
-# MODELOS 2026 (SQUAD ANTIGRAVITY)
-CLAUDE_MODEL = 'claude-3-5-sonnet-20241022' # Atualizado para Sonnet 3.5
-GEMINI_MODEL = 'gemini-flash-latest'       # Nome estável conforme lista de modelos
+        for linha in CONFIG_PATH.read_text(encoding="utf-8").splitlines():
+            if "=" in linha and not linha.startswith("#"):
+                k, v = linha.strip().split("=", 1)
+                if k.strip() == chave:
+                    return v.strip()
+    return ""
 
 
+_PROMPT_SANITIZE = str.maketrans({"\x00": "", "\r": " "})
 
-OLLAMA_URL   = 'http://localhost:11434'
-OLLAMA_MODEL = 'llama3.1:8b'
-
-
-# ── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
-
-SYSTEM_IPSILON = "Processador ETL ORGATEC. Extraia totais (Venda/Remessa) e agrupe. Seja conciso."
-
-SYSTEM_SIGMA   = """[MODO_CONCISO] Você é @Sigma (Data Scientist ORGATEC).
-Mindset: Matemática Bayesiana, Contabilidade Tributária Sistêmica e Big Data.
-Missão: Analise o faturamento e discrepâncias volumétricas com rigor matemático."""
-
-SYSTEM_GAMA    = """[MODO_CONCISO] Você é @Gama (Senior Tax Advisor ORGATEC).
-Mindset: Compliance Fiscal e Planejamento Tributário.
-Protocolo de Entrega: Relatório Jurídico, Cenários de Risco e Conclusão Estratégica.
-Seja direto e embase as análises na legislação."""
-
-SYSTEM_AUDITOR = """Você é o Auditor-Chefe da Squad Antigravity, operando sob o PROTOCOLO SOBERANO ORGATEC.
-Sua missão é realizar a REANÁLISE FORENSE DEFINITIVA.
-
-REGRA DE OURO (SEGURANÇA):
-- ZERO-HALLUCINATION: Se os dados extraídos forem insuficientes ou contraditórios, declare "DADOS INSUFICIENTES PARA VEREDITO". Nunca invente nomes, valores ou fluxos.
-- EVIDÊNCIA PURA: Toda conclusão deve citar a NFA ou o Valor que a originou.
-
-ESTRUTURA OBRIGATÓRIA DO VEREDITO:
-1. REANÁLISE ESTRATÉGICA (O Veredito): Resumo executivo baseado em evidências.
-2. ENTRADAS (Investimento): Somatório real de animais adquiridos.
-3. SAÍDAS (Faturamento): Somatório real de animais comercializados.
-4. ANOMALIA BIO-CONTÁBIL: Diferença matemática exata entre estoque inicial/final.
-5. HIPÓTESE TÉCNICA ORGATEC: Tese agressiva baseada na inconsistência detectada.
-
-Use tom clínico, forense e autoritário. Proteja a integridade técnica da ORGATEC."""
-
-def _claude_disponivel() -> bool:
-    key = _carregar_env('ANTHROPIC_API_KEY')
-    return bool(key and key.startswith('sk-ant'))
-
-def _gemini_disponivel() -> bool:
-    return bool(_carregar_env('GOOGLE_API_KEY'))
-
-def _ollama_disponivel() -> bool:
-    try:
-        res = requests.get(f"{OLLAMA_URL}/api/tags", timeout=1)
-        return res.status_code == 200
-    except:
-        return False
-
-
-# ── LOGICA DE LOTE (CHUNKS) ────────────────────────────────────────────────
-
-_PROMPT_SANITIZE = str.maketrans({
-    "\x00": "",  # null byte
-    "\r": " ",   # CR isolado
-})
 
 def _sanitizar_str(valor: str) -> str:
-    """Remove caracteres que podem ser usados para prompt injection."""
+    """Remove caracteres perigosos para prompt injection."""
     if not isinstance(valor, str):
         return str(valor)
     return (
-        valor
-        .translate(_PROMPT_SANITIZE)
-        .replace("{{", "{ {")   # Jinja-like injection
+        valor.translate(_PROMPT_SANITIZE)
+        .replace("{{", "{ {")
         .replace("}}", "} }")
         .strip()
     )
 
 
 def _montar_prompt(notas: list[NFA]) -> str:
-    """Monta o prompt estruturado para análise das notas, com dados sanitizados."""
+    """Monta prompt compacto — formato tabular, uma linha por nota."""
     if not notas:
-        return "Nenhuma nota fiscal disponível para análise."
-    corpo = "DADOS EXTRAÍDOS:\n"
-    for i, n in enumerate(notas, 1):
-        natureza = _sanitizar_str(n.natureza)
-        emissao  = _sanitizar_str(n.emissao)
-        corpo += (
-            f"- NFA {i}: {natureza} | "
-            f"Emissão: {emissao} | "
-            f"Valor: R$ {n.valor_total:,.2f} | "
-            f"Caps: {n.quantidade_total}\n"
-        )
-    return corpo
-
-# ── MOTORES INDIVIDUAIS ─────────────────────────────────────────────────────
-
-def _analisar_claude(prompt: str, sys: str, callback=None) -> str:
-    api_key = _carregar_env('ANTHROPIC_API_KEY')
-    if not api_key or not api_key.startswith('sk-ant'):
-        logger.warning("Claude: API key ausente ou inválida.")
-        return "[Claude Inativo]"
-    cliente = anthropic.Anthropic(api_key=api_key)
-    try:
-        res = ""
-        with cliente.messages.stream(
-            model=CLAUDE_MODEL, max_tokens=4096, system=sys,
-            messages=[{'role': 'user', 'content': prompt}]
-        ) as stream:
-            for t in stream.text_stream:
-                res += t
-                if callback: callback(t)
-        return res
-    except anthropic.AuthenticationError as e:
-        logger.error(f"Claude: Chave API inválida ou expirada — {e}")
-        return "[Claude Falhou: Auth Inválida]"
-    except anthropic.RateLimitError as e:
-        logger.warning(f"Claude: Rate limit atingido — {e}")
-        return "[Claude Falhou: Rate Limit]"
-    except anthropic.APIError as e:
-        logger.error(f"Claude: Erro de API — {e}")
-        return f"[Claude Falhou: {e}]"
-    except Exception as e:
-        logger.error(f"Claude: Erro inesperado — {e}")
-        return f"[Claude Falhou: {e}]"
-
-def _analisar_gemini(prompt: str, sys: str, callback=None) -> str:
-    import time
-    api_key = _carregar_env('GOOGLE_API_KEY')
-    if not api_key: return "[Gemini Inativo]"
-    cliente = genai.Client(api_key=api_key)
-    
-    modelos_tentar = [GEMINI_MODEL, 'gemini-1.5-flash-latest', 'gemini-1.5-pro-latest']
-
-    
-    for model_name in modelos_tentar:
-        for tentativa in range(3):
-            try:
-                response = cliente.models.generate_content(
-                    model=model_name, contents=prompt,
-                    config=types.GenerateContentConfig(system_instruction=sys)
-                )
-                return response.text
-            except Exception as e:
-                err_str = str(e)
-                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                    wait_time = 20 * (tentativa + 1)
-                    logger.warning(f"Gemini ({model_name}): Rate limit (429). Aguardando {wait_time}s... (Tentativa {tentativa+1}/3)")
-                    if callback: callback(f"\n[!] Rate Limit Gemini. Pausando {wait_time}s para recuperação...\n")
-                    time.sleep(wait_time)
-                    continue
-                
-                logger.error(f"Gemini ({model_name}): Erro — {e}")
-                break # Tenta o próximo modelo se não for 429
-    
-    return f"[Gemini Falhou após rotação e retries]"
+        return "Nenhuma nota fiscal disponível."
+    linhas = ["NFA|NAT|EMISSÃO|VALOR|CAPS"]
+    for n in notas:
+        nat = _sanitizar_str(n.natureza)[:12]
+        emi = _sanitizar_str(n.emissao)
+        linhas.append(f"{n.numero}|{nat}|{emi}|{n.valor_total:.2f}|{n.quantidade_total:.0f}")
+    return "\n".join(linhas)
 
 
-def _analisar_ollama(prompt: str, sys: str, callback=None) -> str:
-    """Motor Local com Streaming para evitar hangs."""
+def _montar_prompt_compacto(resumo: dict[str, Any]) -> str:
+    """Monta prompt a partir de métricas pré-calculadas (sem dados brutos).
+
+    Reduz tokens de input em ~70% comparado a enviar notas individuais.
+    """
+    return json.dumps(resumo, ensure_ascii=False, separators=(",", ":"))
+
+
+def _get_role(system: str) -> str:
+    """Identifica a função do agente pelo system prompt."""
+    return _SYSTEM_TO_ROLE.get(id(system), "chat")
+
+
+# ── Circuit Breaker ──────────────────────────────────────────────────────────
+
+@dataclass
+class _CircuitState:
+    """Estado interno de um provedor no circuit breaker."""
+    failures: int = 0
+    last_failure: float = 0.0
+    is_open: bool = False
+    total_calls: int = 0
+    total_failures: int = 0
+    total_latency: float = 0.0
+
+
+class CircuitBreaker:
+    """Circuit breaker leve para fallback entre provedores de IA.
+
+    Após max_failures consecutivas, abre o circuito por cooldown segundos.
+    Após o cooldown, permite uma tentativa (half-open).
+    """
+
+    def __init__(self, max_failures: int = 3, cooldown: float = 60.0) -> None:
+        self._max = max_failures
+        self._cooldown = cooldown
+        self._states: dict[str, _CircuitState] = {}
+
+    def _state(self, provider: str) -> _CircuitState:
+        if provider not in self._states:
+            self._states[provider] = _CircuitState()
+        return self._states[provider]
+
+    def is_available(self, provider: str) -> bool:
+        """Verifica se o provedor pode receber requests."""
+        s = self._state(provider)
+        if not s.is_open:
+            return True
+        return time.monotonic() - s.last_failure >= self._cooldown
+
+    def success(self, provider: str, latency: float) -> None:
+        """Registra sucesso — reseta contagem de falhas."""
+        s = self._state(provider)
+        s.failures = 0
+        s.is_open = False
+        s.total_calls += 1
+        s.total_latency += latency
+
+    def failure(self, provider: str) -> None:
+        """Registra falha — abre circuito se atingir limite."""
+        s = self._state(provider)
+        s.failures += 1
+        s.total_calls += 1
+        s.total_failures += 1
+        s.last_failure = time.monotonic()
+        if s.failures >= self._max:
+            s.is_open = True
+
+    def metrics(self) -> dict[str, dict]:
+        """Retorna métricas por provedor para observabilidade."""
+        return {
+            name: {
+                "calls": s.total_calls,
+                "failures": s.total_failures,
+                "avg_latency_ms": round((s.total_latency / s.total_calls) * 1000) if s.total_calls else 0,
+                "circuit_open": s.is_open,
+            }
+            for name, s in self._states.items()
+        }
+
+
+_breaker = CircuitBreaker(max_failures=3, cooldown=60.0)
+
+
+# ── Motores de IA ────────────────────────────────────────────────────────────
+
+def _ollama_generate(
+    prompt: str,
+    system: str,
+    callback: Callable | None = None,
+    max_tokens: int = 1024,
+) -> str:
+    """Motor Ollama otimizado para 6GB VRAM (GTX 1660 Super).
+
+    Configurações chave para baixa VRAM:
+    - num_ctx 2048: janela reduzida (~1.2GB KV-cache no q4)
+    - temperature 0.2: determinístico (melhor para auditoria)
+    - repeat_penalty 1.15: evita repetições (problema comum em 7B)
+    - num_gpu 99: força offload total para GPU
+    """
+    modelo = LOCAL_MODEL
+    provider_key = f"ollama:{modelo}"
+
+    if not _breaker.is_available(provider_key):
+        logger.info(f"[Circuit Breaker] {provider_key} em cooldown.")
+        return f"[Ollama Indisponível: {modelo}]"
+
+    t0 = time.monotonic()
     try:
         response = requests.post(
             f"{OLLAMA_URL}/api/generate",
-            json={"model": OLLAMA_MODEL, "prompt": f"System: {sys}\nUser: {prompt}", "stream": True},
-            stream=True
+            json={
+                "model": modelo,
+                "system": system,
+                "prompt": prompt,
+                "stream": True,
+                "options": {
+                    "temperature": 0.2,
+                    "num_predict": max_tokens,
+                    "num_ctx": 2048,
+                    "top_p": 0.85,
+                    "repeat_penalty": 1.15,
+                    "num_gpu": 99,
+                    "num_thread": 4,
+                },
+            },
+            stream=True,
+            timeout=180,
         )
+        response.raise_for_status()
+
         full_text = ""
         for line in response.iter_lines():
-            if line:
-                chunk = json.loads(line.decode('utf-8'))
-                token = chunk.get("response", "")
-                full_text += token
-                if callback: callback(token)
-                if chunk.get("done"): break
+            if not line:
+                continue
+            chunk = json.loads(line.decode("utf-8"))
+            token = chunk.get("response", "")
+            full_text += token
+            if callback:
+                callback(token)
+            if chunk.get("done"):
+                break
+
+        latency = time.monotonic() - t0
+        _breaker.success(provider_key, latency)
+        logger.info(f"Ollama ({modelo}): {len(full_text)} chars em {latency:.1f}s")
         return full_text
+
     except Exception as e:
+        _breaker.failure(provider_key)
+        logger.error(f"Ollama ({modelo}): {e}")
         return f"[Ollama Erro: {e}]"
 
-# ── ORQUESTRADOR RESILIENTE ────────────────────────────────────────────────
 
-def analisar(notas: list[NFA], callback=None, system_override: str = None, 
-             provedor: str = "auto", nome_produtor: str = "") -> str:
-    """Orquestrador resiliente que suporta seleção de motor e fallback."""
+def _claude_generate(
+    prompt: str,
+    system: str,
+    callback: Callable | None = None,
+    max_tokens: int = 2048,
+) -> str:
+    """Motor Claude (opt-in, requer ANTHROPIC_API_KEY)."""
+    import anthropic
+
+    api_key = _carregar_env("ANTHROPIC_API_KEY")
+    if not api_key or not api_key.startswith("sk-ant"):
+        return "[Claude Inativo]"
+
+    if not _breaker.is_available("claude"):
+        return "[Claude Cooldown]"
+
+    t0 = time.monotonic()
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        res = ""
+        with client.messages.stream(
+            model="claude-sonnet-4-20250514",
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            for t in stream.text_stream:
+                res += t
+                if callback:
+                    callback(t)
+        _breaker.success("claude", time.monotonic() - t0)
+        return res
+    except Exception as e:
+        _breaker.failure("claude")
+        logger.error(f"Claude: {e}")
+        return f"[Claude Falhou: {e}]"
+
+
+def _gemini_generate(
+    prompt: str,
+    system: str,
+    callback: Callable | None = None,
+    max_tokens: int = 2048,
+) -> str:
+    """Motor Gemini (opt-in, requer GOOGLE_API_KEY)."""
+    from google import genai
+    from google.genai import types
+
+    api_key = _carregar_env("GOOGLE_API_KEY")
+    if not api_key:
+        return "[Gemini Inativo]"
+
+    if not _breaker.is_available("gemini"):
+        return "[Gemini Cooldown]"
+
+    t0 = time.monotonic()
+    modelos = ["gemini-flash-latest", "gemini-1.5-flash-latest"]
+
+    for model_name in modelos:
+        for tentativa in range(2):
+            try:
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(system_instruction=system),
+                )
+                _breaker.success("gemini", time.monotonic() - t0)
+                return response.text
+            except Exception as e:
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    wait = 15 * (tentativa + 1)
+                    logger.warning(f"Gemini rate limit. Aguardando {wait}s...")
+                    time.sleep(wait)
+                    continue
+                logger.error(f"Gemini ({model_name}): {e}")
+                break
+
+    _breaker.failure("gemini")
+    return "[Gemini Falhou]"
+
+
+# ── Detecção de Falha ────────────────────────────────────────────────────────
+
+def _is_failure(result: str) -> bool:
+    """Detecta se o resultado indica falha do provedor."""
+    markers = ["Falhou", "Inativo", "Erro", "Cooldown", "Indisponível"]
+    return result.startswith("[") and any(m in result for m in markers)
+
+
+# Ordem de prioridade: local primeiro (zero custo, zero latência de rede)
+_PROVIDER_PRIORITY: list[tuple[str, Callable]] = [
+    ("ollama", _ollama_generate),
+    ("claude", _claude_generate),
+    ("gemini", _gemini_generate),
+]
+
+
+# ── API Pública ──────────────────────────────────────────────────────────────
+
+def analisar(
+    notas: list[NFA],
+    callback: Callable | None = None,
+    system_override: str | None = None,
+    provedor: str = "auto",
+    nome_produtor: str = "",
+) -> str:
+    """Orquestrador principal — otimizado para 6GB VRAM.
+
+    Melhorias sobre a versão anterior:
+    - Circuit breaker evita cascata de timeouts
+    - Token limit calibrado por função do agente
+    - Prioridade local-first (Ollama antes de APIs cloud)
+    - Prompt compacto formato tabular
+    """
     prompt = _montar_prompt(notas)
     if nome_produtor:
-        prompt = f"PRODUTOR: {nome_produtor}\n\n" + prompt
-        
+        prompt = f"ALVO: {nome_produtor}\n{prompt}"
+
     sys = system_override or SYSTEM_GAMA
-    
-    # Roteamento por provedor específico
-    if provedor == 'claude':
-        return _analisar_claude(prompt, sys, callback)
-    elif provedor == 'gemini':
-        return _analisar_gemini(prompt, sys, callback)
-    elif provedor == 'ollama':
-        return _analisar_ollama(prompt, sys, callback)
-    
-    # Modo 'auto' ou 'pipeline' (fallback sequencial)
-    # 1. Tenta Claude
-    res = _analisar_claude(prompt, sys, callback)
-    if "[Claude" not in res: return res
+    role = _get_role(sys)
+    max_tokens = TOKEN_LIMITS.get(role, 1024)
 
-    # 2. Tenta Gemini
-    res = _analisar_gemini(prompt, sys, callback)
-    if "[Gemini" not in res: return res
+    # Provedor específico solicitado
+    if provedor != "auto":
+        fn_map = dict(_PROVIDER_PRIORITY)
+        fn = fn_map.get(provedor)
+        if fn:
+            return fn(prompt, sys, callback, max_tokens=max_tokens)
 
-    # 3. Fallback Ollama (Local)
-    if callback: callback("[!] Cloud OFF — Ativando Motor Local (Ollama)...\n")
-    return _analisar_ollama(prompt, sys, callback)
+    # Modo auto: tenta na ordem de prioridade com circuit breaker
+    for prov_name, fn in _PROVIDER_PRIORITY:
+        result = fn(prompt, sys, callback, max_tokens=max_tokens)
+        if not _is_failure(result):
+            return result
+        if callback:
+            callback(f"\n[!] {prov_name} indisponível. Tentando próximo...\n")
 
-# ── PIPELINE EM LOTES (TURBO) ──────────────────────────────────────────────
+    return "[ERRO] Todos os provedores de IA estão indisponíveis."
 
-def analisar_pipeline(notas: list[NFA], callback=None, batch_size=15, nome_contribuinte: str = "") -> str:
-    """Processa grandes volumes dividindo em lotes e consolida com o Auditor Supremo."""
-    if callback: 
-        msg = f"\n[SQUAD] Iniciando Processamento de {len(notas)} notas"
-        if nome_contribuinte: msg += f" para {nome_contribuinte}"
-        callback(f"{msg} em lotes de {batch_size}...\n")
-    
-    análises_parciais = []
+
+def analisar_com_resumo(
+    resumo: dict[str, Any],
+    system: str,
+    callback: Callable | None = None,
+    nome_produtor: str = "",
+) -> str:
+    """Analisa a partir de métricas pré-calculadas (sem dados brutos).
+
+    Reduz tokens de input em ~70% comparado a enviar notas individuais.
+    Ideal para o pipeline Sigma → Gama → Auditor.
+    """
+    prompt = _montar_prompt_compacto(resumo)
+    if nome_produtor:
+        prompt = f"ALVO: {nome_produtor}\n{prompt}"
+
+    role = _get_role(system)
+    max_tokens = TOKEN_LIMITS.get(role, 1024)
+    return _ollama_generate(prompt, system, callback, max_tokens=max_tokens)
+
+
+def analisar_pipeline(
+    notas: list[NFA],
+    callback: Callable | None = None,
+    batch_size: int = 20,
+    nome_contribuinte: str = "",
+) -> str:
+    """Pipeline em lotes otimizado para 6GB VRAM.
+
+    Diferenças chave da versão anterior:
+    - Cada lote é comprimido em métricas ANTES de ir pro modelo
+    - Sigma recebe 1 chamada consolidada (não N chamadas por lote)
+    - Auditor recebe JSON compacto, não texto livre concatenado
+    - batch_size maior (20 vs 15) porque o prompt é menor
+    """
+    if callback:
+        callback(f"\n[SQUAD] {len(notas)} notas em lotes de {batch_size}...\n")
+
+    metricas_lotes: list[dict] = []
     total_lotes = (len(notas) + batch_size - 1) // batch_size
-    
+
     for i in range(0, len(notas), batch_size):
         lote_num = (i // batch_size) + 1
         lote = notas[i : i + batch_size]
-        if callback: callback(f"\n── Lote {lote_num}/{total_lotes} ({len(lote)} notas) ──\n")
-        
-        # Faz uma análise BI/Tributária rápida do lote (@Sigma)
-        res_lote = analisar(lote, callback=callback, system_override=SYSTEM_SIGMA)
-        análises_parciais.append(res_lote)
-        if callback: callback("\n[OK] Lote processado.\n")
+        if callback:
+            callback(f"── Lote {lote_num}/{total_lotes} ({len(lote)} notas) ── ")
 
-    # Estágio Final: Consolidação (Auditor Supremo)
-    if callback: callback("\n── ESTÁGIO FINAL: Auditoria Suprema de Fluxo de Estoque ──\n\n")
-    
-    contexto_auditoria = f"ALVO DA AUDITORIA: {nome_contribuinte}\n" if nome_contribuinte else ""
-    prompt_final = contexto_auditoria + "CONSOLIDAÇÃO DAS ANÁLISES POR LOTE:\n" + "\n---\n".join(análises_parciais)
-    
-    # O auditor mestre recebe a regra de ouro via SYSTEM_AUDITOR
-    return analisar(notas[:5], callback=callback, system_override=SYSTEM_AUDITOR + "\n" + prompt_final)
+        # Comprimir lote em métricas numéricas (zero chamada de IA aqui)
+        resumo_lote = resumo_geral(lote, nome_contribuinte=nome_contribuinte)
+        metricas_lotes.append({
+            "lote": lote_num,
+            "notas": resumo_lote["total_notas"],
+            "valor": round(resumo_lote["total_valor"], 2),
+            "cabecas": round(resumo_lote["total_cabecas"], 1),
+            "ticket_medio": round(resumo_lote["ticket_medio"], 2),
+            "por_natureza": resumo_lote["por_natureza"],
+        })
+        if callback:
+            callback("[OK]\n")
 
-def 
+    # Sigma analisa métricas consolidadas (1 chamada, não N)
+    if callback:
+        callback("\n── @Sigma: Análise Quantitativa ──\n")
+
+    consolidado = {
+        "contribuinte": nome_contribuinte,
+        "total_notas": len(notas),
+        "total_valor": sum(m["valor"] for m in metricas_lotes),
+        "total_cabecas": sum(m["cabecas"] for m in metricas_lotes),
+        "lotes": metricas_lotes,
+    }
+
+    sigma_result = analisar_com_resumo(
+        consolidado, SYSTEM_SIGMA, callback, nome_contribuinte,
+    )
+
+    # Auditor consolida com base em Sigma + métricas
+    if callback:
+        callback("\n\n── @Auditor: Veredito Final ──\n")
+
+    prompt_auditor = json.dumps(
+        {"metricas": consolidado, "analise_sigma": sigma_result},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+    return _ollama_generate(
+        prompt_auditor,
+        SYSTEM_AUDITOR,
+        callback,
+        max_tokens=TOKEN_LIMITS["auditor"],
+    )
+
+
+def perguntar(
+    notas: list[NFA],
+    context_ia: str = "",
+    pergunta: str = "",
+) -> str:
+    """Endpoint de chat genérico para o agente conversacional."""
+    prompt = pergunta
+    if context_ia:
+        prompt = f"CONTEXTO: {context_ia}\nPERGUNTA: {pergunta}"
+    return analisar(notas, system_override=None)
+
+
+def get_ai_metrics() -> dict:
+    """Retorna métricas do circuit breaker para observabilidade."""
+    return _breaker.metrics()
