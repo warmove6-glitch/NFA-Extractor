@@ -1,4 +1,4 @@
-# 🏛️ ORGATEC Sovereign Requirements
+# ORGATEC Sovereign Requirements
 # -------------------------------
 
 # API & Web
@@ -34,4 +34,6 @@ pytest>=8.0.0
 # Autenticação JWT
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
-python-multipart>=0.0.9
+
+# Migrações
+alembic>=1.13.0

@@ -1,32 +1,42 @@
 """
 ORGATEC – Rotas de Autenticação
-POST /auth/login   → recebe email+senha, devolve JWT
-GET  /auth/me      → devolve dados do usuário autenticado
-POST /auth/seed    → cria usuário admin inicial (apenas se não existir)
+POST /auth/login    → recebe email+senha, devolve access + refresh token
+POST /auth/refresh  → recebe refresh token, devolve novo par de tokens
+GET  /auth/me       → devolve dados do usuário autenticado
+POST /auth/seed     → cria usuário admin inicial (apenas se não existir)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.auth.security import (
-    create_access_token,
+    create_token_pair,
     get_current_user,
     hash_password,
     verify_password,
+    verify_refresh_token,
     TokenData,
+    TokenPair,
 )
 from src.infrastructure.database_v2 import SessionLocal, User
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-# ── Schemas de resposta ──────────────────────────────────────────────────────
+# ── Schemas ──────────────────────────────────────────────────────────────────
+
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
+    expires_in: int
     user: dict
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 class MeResponse(BaseModel):
@@ -46,12 +56,10 @@ def get_db():
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
 @router.post("/login", response_model=TokenResponse)
 def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    """
-    Autentica via OAuth2PasswordRequestForm (campo 'username' = e-mail, 'password' = senha).
-    Compatível com Swagger UI e também com fetch JSON do frontend.
-    """
+    """Autentica e retorna par access + refresh token."""
     user = db.query(User).filter(User.email == form.username).first()
 
     if not user or not verify_password(form.password, user.hashed_password):
@@ -64,13 +72,39 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Conta desativada. Contate o administrador.")
 
-    token = create_access_token(
+    token_data = {"sub": str(user.id), "email": user.email, "role": user.role}
+    pair = create_token_pair(token_data)
+
+    return {
+        "access_token": pair.access_token,
+        "refresh_token": pair.refresh_token,
+        "token_type": pair.token_type,
+        "expires_in": pair.expires_in,
+        "user": {"id": user.id, "email": user.email, "nome": user.nome, "role": user.role},
+    }
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
+    """Renova tokens usando refresh token válido."""
+    token_data = verify_refresh_token(body.refresh_token)
+
+    # Verificar se o usuário ainda existe e está ativo
+    user = db.query(User).filter(User.id == int(token_data.sub)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuário não encontrado.")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Conta desativada.")
+
+    new_pair = create_token_pair(
         {"sub": str(user.id), "email": user.email, "role": user.role}
     )
 
     return {
-        "access_token": token,
-        "token_type": "bearer",
+        "access_token": new_pair.access_token,
+        "refresh_token": new_pair.refresh_token,
+        "token_type": new_pair.token_type,
+        "expires_in": new_pair.expires_in,
         "user": {"id": user.id, "email": user.email, "nome": user.nome, "role": user.role},
     }
 
