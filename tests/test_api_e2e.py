@@ -16,6 +16,10 @@ from fastapi.testclient import TestClient
 
 from api.main import app
 from api.auth.security import create_access_token, create_token_pair
+from src.infrastructure.database_v2 import init_db
+
+# Garante que as tabelas existem antes dos testes
+init_db()
 
 client = TestClient(app)
 
