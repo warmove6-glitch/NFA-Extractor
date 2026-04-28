@@ -6,13 +6,18 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 Base = declarative_base()
+
+
+def _utcnow() -> datetime:
+    """Retorna datetime UTC-aware para uso como default em colunas."""
+    return datetime.now(timezone.utc)
 
 
 # ── Modelos ──────────────────────────────────────────────────────────────────
@@ -25,7 +30,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role            = Column(String(50), default="user")          # "user" | "admin"
     is_active       = Column(Boolean, default=True)
-    created_at      = Column(DateTime, default=datetime.now)
+    created_at      = Column(DateTime, default=_utcnow)
 
 
 class Cliente(Base):
@@ -33,7 +38,7 @@ class Cliente(Base):
     id            = Column(Integer, primary_key=True)
     nome          = Column(String(255), nullable=False)
     cpf_cnpj      = Column(String(20), unique=True, nullable=False)
-    data_cadastro = Column(DateTime, default=datetime.now)
+    data_cadastro = Column(DateTime, default=_utcnow)
     laudos        = relationship("Laudo", back_populates="cliente", cascade="all, delete-orphan")
 
 
@@ -45,7 +50,7 @@ class NotaModel(Base):
     emissao        = Column(String)
     natureza       = Column(String)
     laudo_ia       = Column(Text)
-    data_auditoria = Column(DateTime, default=datetime.now)
+    data_auditoria = Column(DateTime, default=_utcnow)
     produtos       = relationship("ProdutoModel", back_populates="nota", cascade="all, delete-orphan")
     __table_args__ = (UniqueConstraint("numero", "emissao", name="uq_nota_numero_emissao"),)
 
@@ -65,7 +70,7 @@ class Laudo(Base):
     __tablename__ = "laudos"
     id             = Column(Integer, primary_key=True)
     cliente_id     = Column(Integer, ForeignKey("clientes.id"), nullable=False)
-    data_auditoria = Column(DateTime, default=datetime.now)
+    data_auditoria = Column(DateTime, default=_utcnow)
     veredito_ia    = Column(Text)
     qtd_notas      = Column(Integer)
     valor_total    = Column(Float)
@@ -76,29 +81,33 @@ class Laudo(Base):
 
 # ── Conexão resiliente ───────────────────────────────────────────────────────
 
-def get_engine():
+def _carregar_database_url() -> str:
+    """Carrega DATABASE_URL de env vars ou config.env (nunca hardcoded)."""
     db_url = os.getenv("DATABASE_URL", "")
+    if db_url:
+        return db_url
 
-    # Fallback: lê config.env se existir (sem expor credenciais no repo)
-    if not db_url:
-        env_path = Path(__file__).parent.parent.parent / "config.env"
-        if env_path.exists():
-            for line in env_path.read_text().splitlines():
-                if line.startswith("DATABASE_URL="):
-                    db_url = line.split("=", 1)[1].strip()
-                    break
+    env_path = Path(__file__).parent.parent.parent / "config.env"
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("DATABASE_URL=") and not line.startswith("#"):
+                return line.split("=", 1)[1].strip()
 
-    if not db_url:
-        db_url = "sqlite:///./orgatec_sovereign.db"
+    return ""
 
-    try:
-        if "postgresql" in db_url:
-            eng = create_engine(db_url, connect_args={"connect_timeout": 5})
-            eng.connect()
-            logger.info("DB: PostgreSQL conectado.")
-            return eng
-    except Exception as exc:
-        logger.warning(f"Postgres indisponível ({exc}). Usando SQLite.")
+
+def get_engine():
+    db_url = _carregar_database_url()
+
+    if db_url:
+        try:
+            if "postgresql" in db_url:
+                eng = create_engine(db_url, connect_args={"connect_timeout": 5})
+                eng.connect()
+                logger.info("DB: PostgreSQL conectado.")
+                return eng
+        except Exception as exc:
+            logger.warning(f"Postgres indisponível ({exc}). Usando SQLite.")
 
     sqlite_url = "sqlite:///./orgatec_sovereign.db"
     eng = create_engine(sqlite_url, connect_args={"check_same_thread": False})
