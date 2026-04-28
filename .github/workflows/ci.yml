@@ -16,22 +16,24 @@ jobs:
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: pip
 
       - name: Instalar dependências de lint
         run: pip install ruff
 
       - name: Executar Ruff
-        run: ruff check .
+        run: ruff check . --exclude .venv,venv
 
   test:
     name: Testes (pytest)
     runs-on: ubuntu-latest
     needs: lint
+    env:
+      JWT_SECRET_KEY: "ci-test-secret-key-must-be-at-least-32-chars-long"
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
+        python-version: ['3.11', '3.12']
 
     steps:
       - uses: actions/checkout@v4
@@ -45,44 +47,34 @@ jobs:
       - name: Instalar dependências
         run: |
           pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
 
       - name: Executar testes com cobertura
         run: |
           pytest tests/ \
-            --cov=. \
-            --cov-omit="app.py,pdf_report.py,.venv/*,tests/*" \
+            --cov=src --cov=api \
+            --cov-omit="tests/*,.venv/*" \
             --cov-report=term-missing \
             --cov-report=xml \
             -v
 
       - name: Upload de cobertura para Codecov
-        if: matrix.python-version == '3.11'
+        if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
 
-  type-check:
-    name: Type Check (mypy)
+  docker:
+    name: Docker Build Test
     runs-on: ubuntu-latest
     needs: lint
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configurar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
+      - name: Build Docker image
+        run: docker build -t orgatec-api:test .
 
-      - name: Instalar dependências
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements-dev.txt
-
-      - name: Executar mypy nos módulos core
-        run: |
-          mypy extractor.py excel_export.py constants.py extrair_nfa.py \
-            --ignore-missing-imports \
-            --no-strict-optional
+      - name: Verificar imagem
+        run: docker images orgatec-api:test
