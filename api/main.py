@@ -10,7 +10,6 @@ Mudanças v7.1:
 
 from __future__ import annotations
 
-import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -24,14 +23,16 @@ from api.routes import auditoria
 from api.routes import auth as auth_router
 from api.auth.security import get_current_user, TokenData
 from src.infrastructure.database_v2 import SessionLocal, Cliente, init_db
+from src.infrastructure.logging_config import setup_logging, get_logger
 
-logger = logging.getLogger("uvicorn")
+logger = get_logger("orgatec.api")
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicialização e shutdown da aplicação."""
+    setup_logging()
     init_db()
     logger.info("ORGATEC API v7.1 iniciada")
     yield
