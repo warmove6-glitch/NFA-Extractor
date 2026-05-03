@@ -23,7 +23,7 @@ jobs:
         run: pip install ruff
 
       - name: Executar Ruff
-        run: ruff check . --exclude .venv,venv
+        run: ruff check .
 
   test:
     name: Testes (pytest)
