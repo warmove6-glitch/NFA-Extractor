@@ -4,10 +4,7 @@ Substitui ReportLab para qualidade visual superior.
 """
 import logging
 from datetime import datetime
-from typing import List, Dict, Any
-from pathlib import Path
-
-from jinja2 import Environment, FileSystemLoader
+from typing import Any
 
 from src.domain.extractor import NFA, resumo_geral
 
@@ -15,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def gerar_pdf_weasyprint(
-    notas: List[NFA],
+    notas: list[NFA],
     saida: str,
     nome_contribuinte: str = "",
     cpf_contribuinte: str = "",
@@ -37,7 +34,7 @@ def gerar_pdf_weasyprint(
         modo_relatorio: 'simples' ou 'detalhado'
     """
     try:
-        from weasyprint import HTML, CSS
+        from weasyprint import CSS, HTML
     except ImportError:
         logger.error("WeasyPrint não instalado. Use: pip install weasyprint")
         raise
@@ -81,7 +78,7 @@ def gerar_pdf_weasyprint(
         raise
 
 
-def _renderizar_template_html(dados: Dict[str, Any]) -> str:
+def _renderizar_template_html(dados: dict[str, Any]) -> str:
     """Renderiza HTML usando template Jinja2."""
     template_html = _obter_template_html()
     from jinja2 import Template

@@ -11,9 +11,9 @@ CORES = {
     'BORDER':   '27272A',  # Zinc 800
     'CYAN':     '38BDF8',  # Sky 400
     'PRIMARY':  '6366F1',  # Indigo 500
-    'GREEN':    '10B981',  
-    'ORANGE':   'F59E0B',  
-    'RED':      'EF4444',  
+    'GREEN':    '10B981',
+    'ORANGE':   'F59E0B',
+    'RED':      'EF4444',
     'TEXT':     'F8FAFC',
     'TEXT_DIM': '94A3B8',
     'WHITE':    'FFFFFF',

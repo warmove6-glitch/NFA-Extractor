@@ -1,8 +1,9 @@
 """Testes de integração da planilha IRPF no pipeline de auditoria."""
 
 import pytest
-from src.domain.extractor import NFA, Parte
+
 from src.domain.analise_local import calcular_metricas_risco, gerar_veredito_local
+from src.domain.extractor import NFA, Parte
 from src.domain.planilha_ir import gerar_dados_planilha, gerar_html_planilha
 
 
@@ -93,11 +94,11 @@ class TestAuditoriaComPlanilha:
 
         # Análise
         analise = calcular_metricas_risco(notas_auditoria)
-        veredito = gerar_veredito_local(notas_auditoria, "Teste", analise)
+        gerar_veredito_local(notas_auditoria, "Teste", analise)
 
         # Planilha
         dados = gerar_dados_planilha(notas_auditoria, "Teste")
-        html = gerar_html_planilha(dados)
+        gerar_html_planilha(dados)
 
         elapsed = (time.time() - start) * 1000  # ms
 

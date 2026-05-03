@@ -1,15 +1,20 @@
 """Testes de Unidade para a Persistência de Banco de Dados."""
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
-from src.infrastructure.database_v2 import (
-    Base, NotaModel, Cliente, ProdutoModel,
-    _get_or_create_cliente, salvar_notas_bd,
-)
 from src.domain.extractor import NFA, Parte, Produto
 from src.infrastructure import database_v2 as database
+from src.infrastructure.database_v2 import (
+    Base,
+    Cliente,
+    NotaModel,
+    ProdutoModel,
+    _get_or_create_cliente,
+    _migrar_users_created_at,
+    salvar_notas_bd,
+)
 
 # SQLite em memória para isolamento total dos testes
 engine = create_engine("sqlite:///:memory:", echo=False)
@@ -97,4 +102,65 @@ class TestDatabasePersistence:
             assert nota_db.produtos[0].descricao == "GADO"
             assert nota_db.produtos[0].quantidade == 10.0
             assert nota_db.produtos[0].vlr_total == 25000.0
- 
+
+
+class TestMigracaoUsersLegada:
+    """Migração defensiva: users.data_cadastro → users.created_at."""
+
+    def test_renomeia_data_cadastro_para_created_at(self):
+        """Tabela legada com data_cadastro deve ser renomeada idempotentemente."""
+        # Engine isolado: simula DB legado sem `created_at`
+        legacy_engine = create_engine("sqlite:///:memory:", echo=False)
+        with legacy_engine.begin() as conn:
+            conn.execute(text(
+                "CREATE TABLE users ("
+                "id INTEGER PRIMARY KEY, "
+                "nome VARCHAR(255), "
+                "email VARCHAR(255), "
+                "hashed_password VARCHAR(255), "
+                "role VARCHAR(50), "
+                "is_active BOOLEAN, "
+                "data_cadastro TIMESTAMP)"
+            ))
+            conn.execute(text(
+                "INSERT INTO users (nome, email, hashed_password, role, is_active, data_cadastro) "
+                "VALUES ('Admin', 'admin@x.com', 'hash', 'admin', 1, '2024-01-01')"
+            ))
+
+        # Substitui engine global temporariamente
+        database.engine = legacy_engine
+        try:
+            _migrar_users_created_at()
+            cols = {c["name"] for c in inspect(legacy_engine).get_columns("users")}
+            assert "created_at" in cols
+            assert "data_cadastro" not in cols
+            # Dados preservados
+            with legacy_engine.connect() as conn:
+                row = conn.execute(text("SELECT email, created_at FROM users")).fetchone()
+                assert row[0] == "admin@x.com"
+                assert row[1] is not None
+        finally:
+            database.engine = engine  # restaura
+
+    def test_idempotente_em_db_ja_migrado(self):
+        """Rodar 2x não deve falhar nem alterar nada."""
+        legacy_engine = create_engine("sqlite:///:memory:", echo=False)
+        Base.metadata.create_all(bind=legacy_engine)
+
+        database.engine = legacy_engine
+        try:
+            _migrar_users_created_at()  # primeira chamada (no-op, tabela já tem created_at)
+            _migrar_users_created_at()  # segunda chamada
+            cols = {c["name"] for c in inspect(legacy_engine).get_columns("users")}
+            assert "created_at" in cols
+        finally:
+            database.engine = engine
+
+    def test_sem_users_nao_falha(self):
+        """Migração em DB sem tabela users deve sair silenciosamente."""
+        empty_engine = create_engine("sqlite:///:memory:", echo=False)
+        database.engine = empty_engine
+        try:
+            _migrar_users_created_at()  # não deve levantar
+        finally:
+            database.engine = engine

@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 """Benchmark de extração de PDF."""
-import time
 import sys
-import os
+import time
 from pathlib import Path
 
 # Adicionar src ao path

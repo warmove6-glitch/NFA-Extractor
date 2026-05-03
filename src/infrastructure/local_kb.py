@@ -13,14 +13,10 @@ Vantagens sobre Ollama:
   - Não alucina — só responde o que foi programado.
 """
 
-import re
-import math
 import logging
-from typing import Optional
+import re
 
 logger = logging.getLogger(__name__)
-
-# ── BASE DE CONHECIMENTO ────────────────────────────────────────────────────
 
 KB: list[dict] = [
     # NFA — Conceitos
@@ -292,25 +288,70 @@ KB: list[dict] = [
 
 # ── MOTOR DE BUSCA SEMÂNTICA ─────────────────────────────────────────────────
 
+
 def _tokenizar(texto: str) -> list[str]:
     """Extrai tokens relevantes (stopwords removidas)."""
     _STOP = {
-        "o", "a", "os", "as", "um", "uma", "de", "do", "da", "dos", "das",
-        "em", "no", "na", "nos", "nas", "para", "por", "com", "sem", "que",
-        "e", "ou", "mas", "se", "como", "qual", "quais", "é", "são", "foi",
-        "pode", "deve", "tem", "ter", "ser", "estar", "me", "meu", "minha",
-        "isso", "esse", "esta", "este", "ao", "à", "às", "aos",
+        "o",
+        "a",
+        "os",
+        "as",
+        "um",
+        "uma",
+        "no",
+        "na",
+        "nos",
+        "nas",
+        "para",
+        "por",
+        "com",
+        "sem",
+        "que",
+        "e",
+        "ou",
+        "mas",
+        "se",
+        "como",
+        "qual",
+        "quais",
+        "é",
+        "são",
+        "foi",
+        "pode",
+        "deve",
+        "tem",
+        "ter",
+        "ser",
+        "estar",
+        "me",
+        "meu",
+        "minha",
+        "isso",
+        "esse",
+        "esta",
+        "este",
+        "ao",
+        "à",
+        "às",
+        "aos",
+        "de",
+        "do",
+        "da",
+        "dos",
+        "das",
     }
     texto = texto.lower()
     texto = re.sub(r"[^a-záéíóúâêîôûãõç\s\d/]", " ", texto)
     tokens = [t for t in texto.split() if t not in _STOP and len(t) > 1]
     return tokens
 
+# Otimização: Pre-computar tokens da base estática para não reprocessar a cada busca
+for _item in KB:
+    _item["_tokens_set"] = set(_tokenizar(" ".join(_item["tags"])) + _tokenizar(_item["pergunta"]))
 
 def _score(pergunta_tokens: list[str], item: dict) -> float:
     """Calcula score de relevância entre a pergunta e um item da KB."""
-    # Tokens do item (tags + palavras da pergunta do KB)
-    item_tokens = set(_tokenizar(" ".join(item["tags"])) + _tokenizar(item["pergunta"]))
+    item_tokens = item.get("_tokens_set", set())
     if not item_tokens:
         return 0.0
 
@@ -318,10 +359,9 @@ def _score(pergunta_tokens: list[str], item: dict) -> float:
     # Jaccard com boost para match exato de n-grams nas tags
     score = matches / (len(pergunta_tokens) + len(item_tokens) - matches + 1e-9)
 
-    # Boost: tag exata presente na pergunta
-    for tag in item["tags"]:
-        if tag in " ".join(pergunta_tokens):
-            score += 0.3
+    for tag in item.get("tags", []):
+        if tag.lower() in " ".join(pergunta_tokens):
+            score += 0.2
 
     return score
 
@@ -339,7 +379,7 @@ def buscar(pergunta: str, top_k: int = 1, min_score: float = 0.05) -> list[dict]
 
 # ── RESPOSTA FALLBACK ─────────────────────────────────────────────────────────
 
-_RESPOSTA_GENERICA = """\
+_RESPOSTA_GENERICA = f"""\
 **Agente ORGATEC — Modo Local (Offline)**
 
 Não encontrei uma resposta específica na base de conhecimento para sua pergunta.
@@ -354,11 +394,11 @@ Não encontrei uma resposta específica na base de conhecimento para sua pergunt
 - Reforma Tributária (EC 132/23) — IBS, CBS, cronograma
 - Sinais de fraude em NFA — alertas, discrepâncias, irregularidades
 
-**Para análise de notas fiscais específicas**, acesse a seção **Auditoria NFA** e faça "
+**Para análise de notas fiscais específicas**, acesse a seção **Auditoria NFA** e faça
 o upload do arquivo XML ou PDF.
 
-*Base de conhecimento: {n} tópicos disponíveis | Modo: KB Local (sem IA cloud)*
-""".format(n=len(KB))
+*Base de conhecimento: {len(KB)} tópicos disponíveis | Modo: KB Local (sem IA cloud)*
+"""
 
 
 def responder(pergunta: str) -> str:
@@ -366,7 +406,7 @@ def responder(pergunta: str) -> str:
     Ponto de entrada principal do motor local.
     Retorna a melhor resposta encontrada na KB ou a resposta genérica.
     """
-    resultados = buscar(pergunta, top_k=1)
+    resultados = buscar(pergunta)
     if resultados:
         item = resultados[0]
         logger.info(f"KB Local: match '{item['pergunta'][:50]}' para '{pergunta[:50]}'")

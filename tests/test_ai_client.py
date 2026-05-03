@@ -19,7 +19,6 @@ from src.infrastructure.ai_client import (
     analisar_producao,
 )
 
-
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 @pytest.fixture

@@ -10,7 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.application.reports.ir_report import gerar_pdf_ir
 from src.domain.extractor import NFA, Parte, Produto
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 @pytest.fixture
@@ -47,7 +46,7 @@ class TestGerarPdfIr:
         """gerar_pdf_ir deve criar um arquivo PDF no caminho indicado."""
         path = str(tmp_path / "report.pdf")
         gerar_pdf_ir(notas_ir, path)
-        
+
         assert os.path.exists(path), "PDF não foi criado"
         assert os.path.getsize(path) > 0, "PDF gerado está vazio"
 
@@ -55,7 +54,7 @@ class TestGerarPdfIr:
         """PDF gerado deve começar com o magic bytes '%PDF-'."""
         path = str(tmp_path / "report.pdf")
         gerar_pdf_ir(notas_ir, path)
-        
+
         with open(path, "rb") as f:
             header = f.read(5)
         assert header == b"%PDF-", f"Header inválido: {header}"
@@ -70,7 +69,7 @@ class TestGerarPdfIr:
         """PDF gerado deve ter pelo menos 3KB."""
         path = str(tmp_path / "report.pdf")
         gerar_pdf_ir(notas_ir, path)
-        
+
         size = os.path.getsize(path)
         assert size >= 3000, f"PDF muito pequeno: {size} bytes"
 
@@ -78,5 +77,5 @@ class TestGerarPdfIr:
         """gerar_pdf_ir deve aceitar ano como string via saida path."""
         path = str(tmp_path / "report.pdf")
         gerar_pdf_ir(notas_ir, saida=path)
-        
+
         assert os.path.exists(path)

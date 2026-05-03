@@ -1,16 +1,14 @@
 """
 ORGATEC – Módulo de Segurança JWT
-Responsabilidades:
-  - Hashing de senhas (bcrypt direto — sem passlib para evitar bug truncate)
-  - Criação e verificação de tokens JWT (python-jose)
-  - Dependência FastAPI para extrair o usuário autenticado
+Suporta dois provedores de token (transparente para as rotas):
+  1. JWT próprio (HS256) — padrão atual
+  2. Supabase Auth JWT — quando SUPABASE_JWT_SECRET estiver configurado
 """
 
 from __future__ import annotations
 
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import bcrypt as _bcrypt
 from fastapi import Depends, HTTPException, status
@@ -18,10 +16,14 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
-# ── Configurações ────────────────────────────────────────────────────────────
+# ── Configurações JWT próprio ─────────────────────────────────────────────────
 SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "TROQUE_EM_PRODUCAO_32_CHARS_MINIMO!")
 ALGORITHM: str = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))  # 8h
+
+# ── Configurações Supabase Auth ───────────────────────────────────────────────
+_SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
+_SUPABASE_CONFIGURADO: bool = bool(_SUPABASE_JWT_SECRET and "AQUI" not in _SUPABASE_JWT_SECRET)
 
 # ── Crypto ───────────────────────────────────────────────────────────────────
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -48,7 +50,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 # ── Funções de token ─────────────────────────────────────────────────────────
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -57,7 +59,26 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+def _decode_supabase_token(token: str) -> TokenData:
+    """Valida token emitido pelo Supabase Auth (HS256 com SUPABASE_JWT_SECRET)."""
+    payload = jwt.decode(token, _SUPABASE_JWT_SECRET, algorithms=["HS256"])
+    # Supabase coloca email em payload["email"] e sub = user UUID
+    email = payload.get("email", "")
+    role_meta = (payload.get("user_metadata") or {}).get("role", "user")
+    app_meta_role = (payload.get("app_metadata") or {}).get("role", role_meta)
+    return TokenData(sub=payload["sub"], email=email, role=app_meta_role)
+
+
 def decode_token(token: str) -> TokenData:
+    """Tenta Supabase Auth primeiro; fallback para JWT próprio."""
+    # 1. Supabase Auth
+    if _SUPABASE_CONFIGURADO:
+        try:
+            return _decode_supabase_token(token)
+        except JWTError:
+            pass  # não é um token Supabase — tenta JWT próprio
+
+    # 2. JWT próprio
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return TokenData(

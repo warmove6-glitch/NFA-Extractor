@@ -22,8 +22,8 @@ sys.path.insert(0, str(ROOT))
 
 def main() -> int:
     try:
-        from src.infrastructure.database_v2 import SessionLocal, User, init_db
         from api.auth.security import hash_password
+        from src.infrastructure.database_v2 import SessionLocal, User, init_db
     except ImportError as exc:
         print(f"❌ Falha ao importar módulos do projeto: {exc}")
         return 1

@@ -2,8 +2,9 @@
 """Teste simples de performance."""
 import asyncio
 import time
-import httpx
 from pathlib import Path
+
+import httpx
 
 API_BASE = "http://localhost:8081"
 client_id = 1
@@ -36,7 +37,7 @@ async def test():
     # Polling
     print("\n[2] Aguardando processamento...")
     async with httpx.AsyncClient(timeout=60) as client:
-        for i in range(300):
+        for _i in range(300):
             resp = await client.get(f"{API_BASE}/auditoria/status/{task_id}")
             if resp.status_code == 200:
                 status = resp.json()

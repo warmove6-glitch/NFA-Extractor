@@ -1,8 +1,9 @@
 """Testes para análise local determinística."""
 
 import pytest
-from src.domain.extractor import NFA, Parte
+
 from src.domain.analise_local import calcular_metricas_risco, gerar_veredito_local
+from src.domain.extractor import NFA, Parte
 
 
 @pytest.fixture
@@ -98,6 +99,13 @@ class TestAnaliseLocal:
         assert 'DISTRIBUIÇÃO POR NATUREZA' in veredito
         assert 'VENDA' in veredito
 
+    def test_distribui_por_natureza_sem_cpf(self, notas_normais):
+        """Sem CPF usa natureza bruta da nota (backward compat)."""
+        analise = calcular_metricas_risco(notas_normais)
+        por_nat = analise["metricas"]["por_natureza"]
+        # Todas as notas da fixture têm natureza="VENDA"
+        assert "VENDA" in por_nat
+
     def test_variacao_alta_detecta_risco(self):
         """Testa detecção de variação alta de valores."""
         notas = [
@@ -115,3 +123,65 @@ class TestAnaliseLocal:
         # Com variação (1000-100)/550 = 1.6, não deve disparar (threshold > 2)
         # Mas deve detectar dados incompletos se houver
         assert analise['score_risco'] >= 0.0
+
+
+class TestAnaliseLocalComCPF:
+    """Testes da análise local com classificação por posição do contribuinte (Regra 1)."""
+
+    CPF = "12345678901"
+    CPF_OUTRO = "99999999999"
+    CPF_COMPRADOR = "77777777777"
+
+    def _nota(self, rem_cpf: str, dest_cpf: str, natureza: str, valor: float = 1000.0) -> NFA:
+        return NFA(
+            numero="NF000001",
+            natureza=natureza,
+            emissao="15/03/2025",
+            valor_total=valor,
+            valor_icms=0.0,
+            quantidade_total=10.0,
+            remetente=Parte(nome="A", cpf_cnpj=rem_cpf),
+            destinatario=Parte(nome="B", cpf_cnpj=dest_cpf),
+        )
+
+    def test_compra_aparece_quando_destinatario_e_contribuinte(self):
+        """Destinatário = contribuinte → DESPESA → exibido como COMPRA."""
+        notas = [
+            self._nota(self.CPF, self.CPF_OUTRO, "VENDA"),        # RECEITA → VENDA
+            self._nota(self.CPF_OUTRO, self.CPF, "VENDA"),        # DESPESA → COMPRA
+            self._nota(self.CPF, self.CPF_COMPRADOR, "REMESSA"),  # TRANSITO → REMESSA
+        ]
+        analise = calcular_metricas_risco(notas, self.CPF)
+        por_nat = analise["metricas"]["por_natureza"]
+        assert "COMPRA" in por_nat
+        assert "VENDA" in por_nat
+        assert "REMESSA" in por_nat
+
+    def test_compra_contagem_correta(self):
+        """Contagem de COMPRA reflete exatamente as notas com destinatário = contribuinte."""
+        notas = (
+            [self._nota(self.CPF_OUTRO, self.CPF, "COMPRA")] * 3   # 3 COMPRAS
+            + [self._nota(self.CPF, self.CPF_OUTRO, "VENDA")] * 5  # 5 VENDAS
+        )
+        analise = calcular_metricas_risco(notas, self.CPF)
+        por_nat = analise["metricas"]["por_natureza"]
+        assert por_nat.get("COMPRA") == 3
+        assert por_nat.get("VENDA") == 5
+
+    def test_sem_cpf_usa_natureza_bruta(self):
+        """Sem CPF, usa natureza raw da nota (backward compat)."""
+        notas = [self._nota(self.CPF_OUTRO, self.CPF, "COMPRA")]
+        analise = calcular_metricas_risco(notas)           # sem CPF
+        por_nat = analise["metricas"]["por_natureza"]
+        # Sem CPF, natureza bruta "COMPRA" é preservada tal qual
+        assert "COMPRA" in por_nat
+
+    def test_veredito_menciona_compra(self):
+        """Veredito local exibe COMPRA na distribuição por natureza."""
+        notas = (
+            [self._nota(self.CPF_OUTRO, self.CPF, "VENDA")] * 2   # COMPRA
+            + [self._nota(self.CPF, self.CPF_OUTRO, "VENDA")] * 5  # VENDA
+        )
+        analise = calcular_metricas_risco(notas, self.CPF)
+        veredito = gerar_veredito_local(notas, "Produtor Teste", analise)
+        assert "COMPRA" in veredito

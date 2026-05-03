@@ -4,13 +4,14 @@ Modo produção: Claude (primário) → Swift/KB Local (fallback).
 Foco: Performance (<20s), simplicidade, custo controlado.
 """
 
-import os
-import logging
-import requests
-import anthropic
 import json
+import logging
+import os
 from pathlib import Path
-from src.domain.extractor import NFA, resumo_geral
+
+import anthropic
+
+from src.domain.extractor import NFA
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,7 @@ CONFIG_PATH  = Path(__file__).parent.parent.parent / 'config.env'
 
 def _carregar_env(chave: str) -> str:
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+        with open(CONFIG_PATH, encoding='utf-8') as f:
             for linha in f:
                 if '=' in linha and not linha.startswith('#'):
                     k, v = linha.strip().split('=', 1)
@@ -107,7 +108,6 @@ def _analisar_claude(prompt: str, sys: str, callback=None, timeout_segundos=15) 
 
     # Tentar Haiku primeiro (rápido)
     cliente = anthropic.Anthropic(api_key=api_key, timeout=timeout_segundos)
-    modelo_atual = CLAUDE_MODEL_RÁPIDO
 
     for tentativa, modelo in [(1, CLAUDE_MODEL_RÁPIDO), (2, CLAUDE_MODEL_FALLBACK)]:
         try:
@@ -129,7 +129,7 @@ def _analisar_claude(prompt: str, sys: str, callback=None, timeout_segundos=15) 
             return "[Claude Falhou: Auth Inválida]", modelo
         except anthropic.RateLimitError as e:
             if tentativa == 1:
-                logger.warning(f"Haiku: Rate limit, tentando Sonnet...")
+                logger.warning("Haiku: Rate limit, tentando Sonnet...")
                 continue
             else:
                 logger.warning(f"Claude: Rate limit atingido em ambos modelos — {e}")
@@ -143,7 +143,7 @@ def _analisar_claude(prompt: str, sys: str, callback=None, timeout_segundos=15) 
                 return f"[Claude Falhou: {e}]", modelo
         except Exception as e:
             if tentativa == 1:
-                logger.warning(f"Haiku timeout/erro, tentando Sonnet...")
+                logger.warning("Haiku timeout/erro, tentando Sonnet...")
                 continue
             else:
                 logger.error(f"Claude: Erro inesperado — {e}")
@@ -228,9 +228,9 @@ Retorne em JSON estruturado.
                     logger.warning("Haiku rate limit, tentando Sonnet...")
                     continue
                 raise
-            except Exception as e:
+            except Exception:
                 if tentativa == 1:
-                    logger.warning(f"Haiku falhou, tentando Sonnet...")
+                    logger.warning("Haiku falhou, tentando Sonnet...")
                     continue
                 raise
 
@@ -343,7 +343,7 @@ def analisar_producao(notas: list[NFA], callback=None, system_override: str = No
             return chunk_id, f"[Erro chunk {chunk_id}: {e}]", "nenhum"
 
     # Executa chunks em paralelo (máx 3 threads para não sobrecarregar API)
-    com_timeout = min(15, 15 / max(1, len(chunks)))  # Distribuir timeout entre chunks
+    min(15, 15 / max(1, len(chunks)))  # Distribuir timeout entre chunks
     with ThreadPoolExecutor(max_workers=min(3, len(chunks))) as executor:
         futures = [
             executor.submit(analisar_chunk, i, chunk)
@@ -360,16 +360,15 @@ def analisar_producao(notas: list[NFA], callback=None, system_override: str = No
                 logger.warning(f"Erro em chunk: {e}")
 
     t_elapsed = time.time() - t0
-    logger.info(f"⏱️ [ANÁLISE PARALELA] {t_elapsed:.1f}s — {len(analises)}/{len(chunks)} chunks")
+    logger.info(f"⏱️  [ORQUESTRAÇÃO CHUNKS] {t_elapsed:.1f}s")
 
-    if not analises:
-        return "[ERRO] Nenhum chunk foi analisado."
+    # Combina resultados
+    veredito_final = ""
+    for i in range(len(chunks)):
+        if i in analises:
+            veredito_final += f"--- Parte {i+1} ---\n{analises[i]}\n\n"
 
-    # Combina resultados dos chunks
-    veredito_consolidado = "ANÁLISE CONSOLIDADA:\n\n"
-    for i in sorted(analises.keys()):
-        veredito_consolidado += f"--- Lote {i+1} ---\n{analises[i]}\n\n"
+    if not veredito_final.strip():
+        return "[ERRO] Falha ao analisar as notas em paralelo."
 
-    logger.info(f"✅ Análise paralela concluída em {t_elapsed:.1f}s")
-    return veredito_consolidado
-
+    return veredito_final

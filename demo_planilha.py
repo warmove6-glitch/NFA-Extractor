@@ -106,4 +106,4 @@ if __name__ == "__main__":
 
     print(f"[OK] Planilha salva em: {output_file}")
     print(f"[OK] Tamanho do arquivo: {len(html):,} bytes")
-    print(f"\nAbra o arquivo no navegador para visualizar a planilha IRPF com layout moderno!")
+    print("\nAbra o arquivo no navegador para visualizar a planilha IRPF com layout moderno!")

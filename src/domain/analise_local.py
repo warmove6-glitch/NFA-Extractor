@@ -1,10 +1,21 @@
 """Análise local determinística - sem dependência de agentes IA."""
 
-from typing import Dict, Any
+from typing import Any
+
+from src.domain.auditoria_forense import _natureza_categoria
 from src.domain.extractor import NFA
 
+# Mapeamento das categorias internas (Regra 1) para labels de exibição
+_CATEGORIA_LABEL: dict[str, str] = {
+    "RECEITA": "VENDA",
+    "TRANSITO": "REMESSA",
+    "TRANSFERENCIA": "TRANSFERENCIA",
+    "DESPESA": "COMPRA",
+    "OUTRA": "OUTRAS",
+}
 
-def calcular_metricas_risco(notas: list[NFA]) -> Dict[str, Any]:
+
+def calcular_metricas_risco(notas: list[NFA], cliente_cpf: str | None = None) -> dict[str, Any]:
     """Calcula métricas de risco baseadas em regras locais."""
     if not notas:
         return {
@@ -55,9 +66,15 @@ def calcular_metricas_risco(notas: list[NFA]) -> Dict[str, Any]:
             score_risco += 0.05
 
     # 4. Análise de natureza de operação
-    por_natureza = {}
+    # Quando o CPF do cliente é fornecido, usa a Regra 1 (posição do contribuinte)
+    # para classificar corretamente: VENDA, REMESSA, TRANSFERENCIA, COMPRA, OUTRAS.
+    por_natureza: dict[str, int] = {}
     for n in notas:
-        natureza = n.natureza or 'OUTRAS'
+        if cliente_cpf:
+            cat = _natureza_categoria(n, cliente_cpf)
+            natureza = _CATEGORIA_LABEL.get(cat, "OUTRAS")
+        else:
+            natureza = n.natureza or "OUTRAS"
         por_natureza[natureza] = por_natureza.get(natureza, 0) + 1
 
     total_notas = len(notas)
@@ -109,7 +126,7 @@ def calcular_metricas_risco(notas: list[NFA]) -> Dict[str, Any]:
     }
 
 
-def gerar_veredito_local(notas: list[NFA], nome_contribuinte: str, analise: Dict[str, Any]) -> str:
+def gerar_veredito_local(notas: list[NFA], nome_contribuinte: str, analise: dict[str, Any]) -> str:
     """Gera veredito baseado em análise local determinística."""
 
     if not notas:
@@ -149,7 +166,7 @@ DISTRIBUIÇÃO POR NATUREZA:
         for obs in observacoes:
             veredito += f"• {obs}\n"
 
-    veredito += f"\nCONCLUSÃO:\n"
+    veredito += "\nCONCLUSÃO:\n"
 
     if nivel == 'ALTO':
         veredito += "Recomenda-se análise manual detalhada. Lote apresenta sinais de não-conformidade."
@@ -158,6 +175,6 @@ DISTRIBUIÇÃO POR NATUREZA:
     else:
         veredito += "Lote apresenta conformidade adequada. Sem sinais críticos de não-conformidade."
 
-    veredito += f"\n\nAnálise realizada pelo sistema de auditoria local (determinístico)."
+    veredito += "\n\nAnálise realizada pelo sistema de auditoria local (determinístico)."
 
     return veredito

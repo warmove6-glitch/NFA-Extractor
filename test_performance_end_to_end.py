@@ -2,9 +2,9 @@
 """Teste end-to-end de performance: simula upload e polling."""
 import asyncio
 import time
-import httpx
-import json
 from pathlib import Path
+
+import httpx
 
 API_BASE = "http://localhost:8081"
 FRONTEND_BASE = "http://localhost:5173"

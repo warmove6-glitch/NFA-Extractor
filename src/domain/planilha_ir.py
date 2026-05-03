@@ -1,16 +1,25 @@
 """Geração de planilha de gado para IRPF - modelo simplificado."""
 
-from typing import Dict, List, Tuple
-from src.domain.extractor import NFA, resumo_geral
+from src.domain.auditoria_forense import _natureza_categoria
+from src.domain.extractor import NFA
+
+# Mapeamento das categorias internas (Regra 1) para labels de exibição
+_CATEGORIA_LABEL: dict[str, str] = {
+    "RECEITA": "VENDA",
+    "TRANSITO": "REMESSA",
+    "TRANSFERENCIA": "TRANSFERENCIA",
+    "DESPESA": "COMPRA",
+    "OUTRA": "OUTRAS",
+}
 
 
-def gerar_dados_planilha(notas: List[NFA], nome_produtor: str) -> Dict:
+def gerar_dados_planilha(notas: list[NFA], nome_produtor: str, cliente_cpf: str | None = None) -> dict:
     """Extrai dados para planilha no formato IRPF (Lei 8.023/90)."""
 
     # Organiza notas por natureza e mês
     por_natureza_mes = {}
 
-    for natureza in ['VENDA', 'REMESSA', 'TRANSFERENCIA', 'OUTRAS']:
+    for natureza in ['VENDA', 'REMESSA', 'COMPRA', 'TRANSFERENCIA', 'OUTRAS']:
         por_natureza_mes[natureza] = {}
         for mes in range(1, 13):
             por_natureza_mes[natureza][mes] = {
@@ -25,12 +34,17 @@ def gerar_dados_planilha(notas: List[NFA], nome_produtor: str) -> Dict:
         if nota.emissao and len(nota.emissao) >= 5:
             try:
                 mes = int(nota.emissao[3:5])
-            except:
+            except (ValueError, TypeError):
                 continue
         else:
             continue
 
-        natureza = nota.natureza or 'OUTRAS'
+        # Quando CPF do cliente disponível, classifica pela posição (Regra 1)
+        if cliente_cpf:
+            cat = _natureza_categoria(nota, cliente_cpf)
+            natureza = _CATEGORIA_LABEL.get(cat, "OUTRAS")
+        else:
+            natureza = nota.natureza or 'OUTRAS'
         if natureza not in por_natureza_mes:
             natureza = 'OUTRAS'
 
@@ -79,17 +93,18 @@ def formatar_moeda(valor: float) -> str:
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def gerar_html_planilha(dados: Dict) -> str:
+def gerar_html_planilha(dados: dict) -> str:
     """Gera HTML da planilha no modelo IRPF."""
 
     meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
              "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
 
     cores = {
-        'VENDA': '#10b981',  # Verde
-        'REMESSA': '#f59e0b',  # Amarelo
-        'TRANSFERENCIA': '#06b6d4',  # Cyan
-        'OUTRAS': '#a855f7',  # Roxo
+        'VENDA': '#10b981',         # Verde
+        'REMESSA': '#f59e0b',       # Amarelo
+        'COMPRA': '#ef4444',        # Vermelho (despesa/investimento)
+        'TRANSFERENCIA': '#06b6d4', # Cyan
+        'OUTRAS': '#a855f7',        # Roxo
     }
 
     html = f"""<!DOCTYPE html>
@@ -115,6 +130,7 @@ def gerar_html_planilha(dados: Dict) -> str:
         .section-header {{ background: #1e293b; color: white; padding: 12px; font-weight: bold; }}
         .section-color-venda {{ background: #10b981; }}
         .section-color-remessa {{ background: #f59e0b; }}
+        .section-color-compra {{ background: #ef4444; }}
         .section-color-transferencia {{ background: #06b6d4; }}
         .section-color-outras {{ background: #a855f7; }}
         .total-row {{ background: #1e293b; color: white; font-weight: bold; }}
@@ -126,7 +142,7 @@ def gerar_html_planilha(dados: Dict) -> str:
 <body>
     <div class="container">
         <div class="header">
-            <h1>PLANILHA DE GADO PARA IMPOSTO DE RENDA</h1>
+            <h1>RELATÓRIO DE MOVIMENTAÇÃO — IRPF</h1>
             <p>Lei 8.023/90 - IRPF Atividade Rural</p>
         </div>
 

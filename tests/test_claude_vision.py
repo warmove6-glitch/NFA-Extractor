@@ -12,9 +12,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.domain.extractor import NFA, Parte, Produto
 from src.infrastructure.ai_client import (
-    extrair_com_claude_vision,
-    analisar_producao,
     _analisar_claude,
+    analisar_producao,
+    extrair_com_claude_vision,
 )
 
 

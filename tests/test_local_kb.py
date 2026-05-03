@@ -3,14 +3,14 @@ Testes para src/infrastructure/local_kb.py
 Motor de Conhecimento Local — alternativa offline ao Ollama.
 """
 import pytest
+
 from src.infrastructure.local_kb import (
     KB,
-    _tokenizar,
     _score,
+    _tokenizar,
     buscar,
     responder,
 )
-
 
 # ── KB integridade ──────────────────────────────────────────────────────────
 

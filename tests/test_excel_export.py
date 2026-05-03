@@ -11,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.application.reports.excel_export import exportar_excel
 from src.domain.extractor import NFA, Parte, Produto
 
-
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
 @pytest.fixture

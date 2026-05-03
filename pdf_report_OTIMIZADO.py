@@ -13,28 +13,32 @@ BENCHMARKS:
 - Depois: 150 notas = 3.1s (75% mais rápido!)
 """
 
-import re
 import logging
+import re
 import time
 from datetime import datetime
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    HRFlowable, KeepTogether,
-    PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    HRFlowable,
+    KeepTogether,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
 )
 
-from src.domain.constants import hex_cor
 from src.domain.extractor import NFA, resumo_geral
 
 logger = logging.getLogger(__name__)
 
-LOGO_PATH = str(Path(__file__).parent / 'assets' / 'logo.png')
+LOGO_PATH = str(Path(__file__).parent / 'src' / 'application' / 'reports' / 'assets' / 'logo.png')
 
 # ── Paleta de cores (Design Moderno) ──────────────────────────────────────────
 SIDEBAR    = colors.HexColor('#2d3436')  # Cinza escuro para sidebar
@@ -77,9 +81,12 @@ _RISCO_FG = {
 
 # ── Cabeçalho/Rodapé ──────────────────────────────────────────────────────────
 
+import os
+
+_LOGO_EXISTS = os.path.exists(LOGO_PATH)
+
 def _header_footer(canvas, doc):
     """Cabeçalho e rodapé com melhorias de layout para impressão."""
-    import os
     canvas.saveState()
 
     # Header minimalista
@@ -91,7 +98,7 @@ def _header_footer(canvas, doc):
     canvas.rect(0, H - 1.6*cm, W, 0.08*cm, fill=1, stroke=0)
 
     logo_sz = 1.0*cm
-    if os.path.exists(LOGO_PATH):
+    if _LOGO_EXISTS:
         canvas.drawImage(LOGO_PATH, 0.5*cm, H - 1.45*cm,
                          width=logo_sz, height=logo_sz,
                          preserveAspectRatio=True, mask='auto')
@@ -371,14 +378,22 @@ def gerar_pdf(
     st = _estilos()
 
     # Mini-resumo rápido (sem cálculos pesados)
-    res = {
-        'total_notas': len(notas),
-        'total_cabecas': sum(n.quantidade_total for n in notas) if notas else 0,
-        'total_valor': sum(n.valor_total for n in notas) if notas else 0,
-        'ticket_medio': (sum(n.valor_total for n in notas) / sum(n.quantidade_total for n in notas)) if notas and sum(n.quantidade_total for n in notas) > 0 else 0,
-        'por_natureza': {},
-        'top_dest': [],
-    }
+    total_n = len(notas)
+    total_cabecas = sum(n.quantidade_total for n in notas) if notas else 0
+    total_valor = sum(n.valor_total for n in notas) if notas else 0
+
+    # Otimização: Restaura o cálculo completo apenas se o relatório for detalhado
+    if modo_relatorio == 'detalhado':
+        res = resumo_geral(notas, nome_contribuinte)
+    else:
+        res = {
+            'total_notas': total_n,
+            'total_cabecas': total_cabecas,
+            'total_valor': total_valor,
+            'ticket_medio': (total_valor / total_cabecas) if total_cabecas > 0 else 0,
+            'por_natureza': {},
+            'top_dest': [],
+        }
     elements = []
 
     # ── Título ────────────────────────────────────────────────────────────────
@@ -507,7 +522,7 @@ def gerar_html_relatorio(
     """
     t0 = time.time()
 
-    qtd_notas = len(notas) if notas else 0
+    len(notas) if notas else 0
     resumo = resumo_geral(notas, nome_contribuinte)
 
     periodo = "N/A"

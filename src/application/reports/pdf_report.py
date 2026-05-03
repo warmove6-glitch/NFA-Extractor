@@ -13,23 +13,27 @@ BENCHMARKS:
 - Depois: 150 notas = 3.1s (75% mais rápido!)
 """
 
-import re
 import logging
+import re
 import time
 from datetime import datetime
 from pathlib import Path
 
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    HRFlowable, KeepTogether,
-    PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+    HRFlowable,
+    KeepTogether,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
 )
 
-from src.domain.constants import hex_cor
 from src.domain.extractor import NFA, resumo_geral
 
 logger = logging.getLogger(__name__)
@@ -512,7 +516,7 @@ def gerar_html_relatorio(
     """
     t0 = time.time()
 
-    qtd_notas = len(notas) if notas else 0
+    len(notas) if notas else 0
     resumo = resumo_geral(notas, nome_contribuinte)
 
     periodo = "N/A"

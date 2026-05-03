@@ -19,8 +19,14 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import (
-    BaseDocTemplate, Frame, PageTemplate,
-    Paragraph, Spacer, Table, TableStyle, KeepTogether,
+    BaseDocTemplate,
+    Frame,
+    KeepTogether,
+    PageTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
 )
 
 if TYPE_CHECKING:
@@ -288,7 +294,7 @@ def _bloco_cabecalho(notas: list[NFA], ano: str, estilos: dict) -> list:
     produtor = next((n.remetente.nome for n in notas if n.remetente.nome), '–')
 
     titulo_tbl = Table(
-        [[Paragraph('PLANILHA DE GADO PARA IMPOSTO DE RENDA', ParagraphStyle(
+        [[Paragraph('RELATÓRIO DE MOVIMENTAÇÃO — IRPF', ParagraphStyle(
             'Titulo', fontName='Helvetica-Bold', fontSize=14,
             alignment=TA_CENTER, textColor=BRANCO,
         ))]],
@@ -347,7 +353,7 @@ def gerar_pdf_ir(notas: list[NFA], saida: str) -> None:
         notas: Lista de NFAs extraídas do PDF.
         saida: Caminho do arquivo PDF de destino.
     """
-    from src.domain.extractor import resumo_geral, classificar_natureza
+    from src.domain.extractor import resumo_geral
 
     if not notas:
         raise ValueError('Nenhuma nota fiscal para gerar a Planilha IR.')

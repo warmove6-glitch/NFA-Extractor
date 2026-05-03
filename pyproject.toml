@@ -21,7 +21,16 @@ fail_under = 60
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-exclude = [".venv", "__pycache__", "dist", "build"]
+exclude = [
+    ".venv",
+    "__pycache__",
+    "dist",
+    "build",
+    "node_modules",
+    "frontend",
+    "alembic/versions",
+    "src/application/reports/orgaudi/orgaudi_v4.py",  # codigo externo (OrgAudi 1.0)
+]
 
 [tool.ruff.lint]
 select = [
@@ -34,11 +43,19 @@ select = [
 ]
 ignore = [
     "E501",  # linha longa (ruff format cuida disso)
-    "B008",  # não usar chamadas de função em argumentos default
+    "E402",  # import nao no topo (necessario em scripts com sys.path)
+    "E701",  # multiplos statements na mesma linha (estilo legado)
+    "E741",  # nomes de variavel ambiguos (l, I, O) — comum em comprehensions
+    "E722",  # bare except — toleravel em logging defensivo
+    "B008",  # nao usar chamadas em argumentos default (FastAPI Depends)
+    "B904",  # raise from em except — nao critico
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["F401", "E402"]
+"tests/*" = ["F401", "E402", "B007"]
+"scripts/*" = ["E402", "F401"]
+"benchmark_*.py" = ["F401"]
+"src/application/reports/pdf_weasyprint.py" = ["F401"]
 
 [tool.mypy]
 python_version = "3.10"

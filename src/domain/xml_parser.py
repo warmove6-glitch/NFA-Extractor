@@ -11,11 +11,10 @@ Economia de tokens:
 """
 from __future__ import annotations
 
-import re
 import logging
-from dataclasses import dataclass, field
-from typing import Optional
+import re
 import xml.etree.ElementTree as ET
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +108,7 @@ class NotaFiscalXML:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-def _txt(el: Optional[ET.Element], path: str, ns_key: str = "") -> str:
+def _txt(el: ET.Element | None, path: str, ns_key: str = "") -> str:
     """Busca texto de um sub-elemento; retorna '' se não encontrado.
 
     O path pode usar prefixo 'n:' — será mapeado para o namespace indicado por ns_key.
@@ -165,7 +164,7 @@ def _detectar_tipo(root: ET.Element) -> str:
 
 # ── Parsers por tipo ──────────────────────────────────────────────────────────
 
-def _first(root: ET.Element, *xpaths: str) -> Optional[ET.Element]:
+def _first(root: ET.Element, *xpaths: str) -> ET.Element | None:
     """Retorna o primeiro elemento encontrado dentre os xpaths fornecidos."""
     for xpath in xpaths:
         el = root.find(xpath)
@@ -174,7 +173,7 @@ def _first(root: ET.Element, *xpaths: str) -> Optional[ET.Element]:
     return None
 
 
-def _find_el(root: ET.Element, tag: str, ns_key: str = "nfse") -> Optional[ET.Element]:
+def _find_el(root: ET.Element, tag: str, ns_key: str = "nfse") -> ET.Element | None:
     """Busca elemento por tag com namespace e depois sem, retornando o primeiro achado."""
     ns = {"n": NS[ns_key]} if ns_key in NS else {}
     found = root.find(f".//n:{tag}", ns) if ns else None
@@ -324,7 +323,7 @@ def _parse_nfa(root: ET.Element) -> NotaFiscalXML:
         el = root.find(f".//{tag}")
         return (el.text or "").strip() if el is not None else ""
 
-    def _el(parent: Optional[ET.Element], tag: str) -> str:
+    def _el(parent: ET.Element | None, tag: str) -> str:
         if parent is None:
             return ""
         found = parent.find(tag)
@@ -416,7 +415,7 @@ def parse_xml(conteudo: bytes | str, modo_resumo: str = "resumido") -> NotaFisca
         # Tenta NF-e como fallback (schema mais comum)
         logger.warning("Tipo de nota não reconhecido — tentando parser NF-e")
         nota = _parse_nfe(root)
-        nota.tipo = f"Desconhecido (tentativa NF-e)"
+        nota.tipo = "Desconhecido (tentativa NF-e)"
 
     # 4. Calcula tokens estimados
     resumo = nota.resumo_auditoria(modo_resumo)
@@ -457,7 +456,7 @@ def resumo_lote_para_agentes(notas: list[NotaFiscalXML], modo: str = "resumido")
 
     linhas = [
         f"=== LOTE: {len(notas)} nota(s) fiscal(is) ===",
-        f"Tipos    : " + " | ".join(f"{t}: {q}" for t, q in tipos_count.items()),
+        "Tipos    : " + " | ".join(f"{t}: {q}" for t, q in tipos_count.items()),
         f"Total    : R${total_valor:,.2f} | Impostos: R${total_imposto:,.2f}",
         "",
     ]

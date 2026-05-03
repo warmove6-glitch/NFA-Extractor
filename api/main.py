@@ -7,18 +7,48 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request
+# Carrega .env e config.env ANTES de importar quaisquer módulos que leiam
+# variáveis de ambiente no top-level (database_v2, integrations, etc.).
+# Estratégia:
+#   1) config.env → defaults compartilhados (não sobrescreve ambient)
+#   2) .env       → segredos do projeto (override de strings vazias do ambient)
+from dotenv import load_dotenv
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_PROJECT_ROOT / "config.env", override=False)
+
+# .env tem prioridade — substitui valores vazios herdados do ambient
+def _load_dotenv_substituindo_vazios(path: Path) -> None:
+    if not path.exists():
+        return
+    for linha in path.read_text(encoding="utf-8").splitlines():
+        s = linha.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        chave, valor = s.split("=", 1)
+        chave = chave.strip()
+        valor = valor.strip().strip('"').strip("'")
+        # Sobrescreve apenas se ambient não tiver ou tiver vazio
+        if not os.environ.get(chave):
+            os.environ[chave] = valor
+
+
+_load_dotenv_substituindo_vazios(_PROJECT_ROOT / ".env")
+
+
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from typing import Optional
 
+from api.auth.security import TokenData, get_current_user
 from api.routes import auditoria
 from api.routes import auth as auth_router
-from api.auth.security import get_current_user, TokenData
-from src.infrastructure.database_v2 import SessionLocal, Cliente, init_db
+from api.routes import notas as notas_router
+from api.schemas import ClienteCreate, ClienteResponse
+from src.infrastructure.database_v2 import Cliente, SessionLocal, init_db
 
 logger = logging.getLogger("uvicorn")
 
@@ -88,7 +118,7 @@ def _seed_admin():
     db = SessionLocal()
     try:
         existing = db.query(User).filter(User.email == "admin@orgatec.com.br").first()
-        new_hash = hash_password("Admin@2024!")
+        new_hash = hash_password("Admin@2026!")
         if existing:
             # Sempre re-hasheia para garantir compatibilidade com bcrypt direto
             existing.hashed_password = new_hash
@@ -119,17 +149,11 @@ def get_db():
         db.close()
 
 
-# ── Schemas ───────────────────────────────────────────────────────────────────
-class ClientCreate(BaseModel):
-    nome: str = Field(..., min_length=3)
-    cpf_cnpj: str = Field(..., description="CPF ou CNPJ (somente dígitos)")
-
-
 # ── Rotas: Clientes (protegidas por JWT) ──────────────────────────────────────
 router_clientes = APIRouter(prefix="/clientes", tags=["Clientes"])
 
 
-@router_clientes.get("/")
+@router_clientes.get("/", response_model=list[ClienteResponse])
 def listar_clientes(
     db: Session = Depends(get_db),
     _: TokenData = Depends(get_current_user),
@@ -137,9 +161,9 @@ def listar_clientes(
     return db.query(Cliente).all()
 
 
-@router_clientes.post("/", status_code=201)
+@router_clientes.post("/", status_code=201, response_model=ClienteResponse)
 def criar_cliente(
-    client: ClientCreate,
+    client: ClienteCreate,
     db: Session = Depends(get_db),
     _: TokenData = Depends(get_current_user),
 ):
@@ -169,14 +193,56 @@ def remover_cliente(
 app.include_router(auth_router.router)
 app.include_router(auditoria.router)
 app.include_router(router_clientes)
+app.include_router(notas_router.router)
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
-@app.get("/ping", tags=["Health"])
-def ping(db: Session = Depends(get_db)):
+def _verificar_saude(db: Session) -> dict:
     try:
         db.execute(__import__("sqlalchemy").text("SELECT 1"))
         db_status = "ok"
     except Exception as exc:
         db_status = f"error: {exc}"
-    return {"status": "ok", "version": "7.0.0", "db": db_status}
+
+    try:
+        import fitz
+        pdf_engine = f"pymupdf-{fitz.__version__}"
+    except Exception:
+        pdf_engine = "pdfplumber (slow fallback)"
+
+    try:
+        from src.nfa_repo_bridge import info_bridge
+        bridge_info = info_bridge()
+        bridge_status = {
+            "disponivel": bridge_info.get("hardening_disponivel", False),
+            "modulos_ok": sum(1 for v in bridge_info.get("modulos_carregados", {}).values() if v),
+            "modulos_total": len(bridge_info.get("modulos_carregados", {})),
+        }
+    except Exception as exc:
+        bridge_status = {"erro": str(exc)[:100]}
+
+    # Status do squad Horizon-Blue (multiagente Claude)
+    try:
+        from src.integrations.horizon_squad import status_squad
+        squad_status = status_squad()
+    except Exception as exc:
+        squad_status = {"erro": str(exc)[:100]}
+
+    return {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "version": "7.0.0",
+        "db": db_status,
+        "pdf_engine": pdf_engine,
+        "nfa_repo_bridge": bridge_status,
+        "horizon_squad": squad_status,
+    }
+
+
+@app.get("/ping", tags=["Health"])
+def ping(db: Session = Depends(get_db)):
+    return _verificar_saude(db)
+
+
+@app.get("/health", tags=["Health"])
+def health(db: Session = Depends(get_db)):
+    return _verificar_saude(db)

@@ -17,16 +17,16 @@ Fixtures disponíveis:
 from __future__ import annotations
 
 import pytest
+
 from src.domain.xml_parser import (
+    TIPO_NFA,
+    TIPO_NFE,
+    TIPO_NFSE,
+    NotaFiscalXML,
     parse_xml,
     parse_xml_lote,
     resumo_lote_para_agentes,
-    NotaFiscalXML,
-    TIPO_NFSE,
-    TIPO_NFE,
-    TIPO_NFA,
 )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Fixtures — XMLs representativos

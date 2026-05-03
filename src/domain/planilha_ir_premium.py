@@ -1,17 +1,28 @@
 """
 Gerador de planilha IRPF com design premium (Fiscal Clarity).
 """
-from typing import List, Dict, Any
-from src.domain.extractor import NFA
+from typing import Any
 
 
-def gerar_html_planilha_premium(dados: Dict[str, Any]) -> str:
+def gerar_html_planilha_premium(dados: dict[str, Any]) -> str:
     """Gera HTML com design moderno e profissional."""
 
     nome_contribuinte = dados.get('nome_contribuinte', 'Contribuinte')
     por_mes = dados.get('por_mes', {})
     por_natureza = dados.get('por_natureza', {})
     top_dest = dados.get('top_dest', [])
+
+    # Linhas top destinatarios (pre-computadas — evita triple f-string nesting,
+    # nao suportado em Python 3.10/3.11)
+    _rows_top_dest = "\n".join(
+        f"<tr>"
+        f"<td>{d.get('nome', 'N/A')[:40]}</td>"
+        f"<td class='num'>{d.get('notas', 0)}</td>"
+        f"<td class='num'>{d.get('cabecas', 0):,.0f}</td>"
+        f"<td class='num'>R$ {d.get('valor', 0):,.0f}</td>"
+        f"</tr>"
+        for d in top_dest[:10]
+    )
 
     # Calcular KPIs
     total_notas = sum(m.get('notas', 0) for m in por_mes.values())
@@ -407,14 +418,7 @@ def gerar_html_planilha_premium(dados: Dict[str, Any]) -> str:
                     </tr>
                 </thead>
                 <tbody>
-                    {' '.join(f'''
-                    <tr>
-                        <td>{dest.get("nome", "N/A")[:40]}</td>
-                        <td class="num">{dest.get("notas", 0)}</td>
-                        <td class="num">{dest.get("cabecas", 0):,.0f}</td>
-                        <td class="num">R$ {dest.get("valor", 0):,.0f}</td>
-                    </tr>
-                    ''' for dest in top_dest[:10])}
+                    {_rows_top_dest}
                 </tbody>
             </table>
             ''' if top_dest else ''}

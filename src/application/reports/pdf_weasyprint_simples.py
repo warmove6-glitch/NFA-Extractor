@@ -4,7 +4,7 @@ Foco em KPIs essenciais apenas.
 """
 import logging
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import Any
 
 from src.domain.extractor import NFA, resumo_geral
 
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def gerar_pdf_simples(
-    notas: List[NFA],
+    notas: list[NFA],
     saida: str,
     nome_contribuinte: str = "",
     cpf_contribuinte: str = "",
@@ -66,7 +66,7 @@ def gerar_pdf_simples(
         raise
 
 
-def _template_minimalista(dados: Dict[str, Any]) -> str:
+def _template_minimalista(dados: dict[str, Any]) -> str:
     """Template HTML minimalista."""
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
@@ -355,7 +355,7 @@ def _template_minimalista(dados: Dict[str, Any]) -> str:
 </html>"""
 
 
-def _gerar_operacoes(por_natureza: Dict[str, int], total: int) -> str:
+def _gerar_operacoes(por_natureza: dict[str, int], total: int) -> str:
     """Gera linhas de operações."""
     html = ""
     for natureza, qtd in por_natureza.items():

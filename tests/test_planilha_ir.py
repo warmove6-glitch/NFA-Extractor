@@ -1,6 +1,7 @@
 """Testes para geração de planilha IRPF."""
 
 import pytest
+
 from src.domain.extractor import NFA, Parte
 from src.domain.planilha_ir import gerar_dados_planilha, gerar_html_planilha
 
@@ -103,7 +104,7 @@ class TestPlanilhaIR:
         html = gerar_html_planilha(dados)
 
         assert "<!DOCTYPE html>" in html
-        assert "PLANILHA DE GADO PARA IMPOSTO DE RENDA" in html
+        assert "RELATÓRIO DE MOVIMENTAÇÃO" in html
         assert "Produtor Teste" in html
         assert "VENDA" in html
         assert "REMESSA" in html
@@ -128,3 +129,77 @@ class TestPlanilhaIR:
         assert "Produtor" in html
         # Sem totais por natureza, não deve incluir tabelas de natureza
         assert "TOTAL DE NOTAS" in html or "total" in html.lower()
+
+
+class TestPlanilhaIRComCPF:
+    """Testes da planilha com classificação por posição do contribuinte (Regra 1)."""
+
+    CPF = "12345678901"
+    CPF_OUTRO = "99999999999"
+
+    def _nota(
+        self,
+        rem_cpf: str,
+        dest_cpf: str,
+        natureza: str,
+        valor: float = 2000.0,
+        mes: str = "15/01/2026",
+    ) -> NFA:
+        return NFA(
+            numero="NF000001",
+            natureza=natureza,
+            emissao=mes,
+            valor_total=valor,
+            valor_icms=0.0,
+            quantidade_total=20.0,
+            remetente=Parte(nome="A", cpf_cnpj=rem_cpf),
+            destinatario=Parte(nome="B", cpf_cnpj=dest_cpf),
+        )
+
+    def test_compra_aparece_nos_totais(self):
+        """Nota com destinatário = contribuinte gera COMPRA nos totais."""
+        notas = [
+            self._nota(self.CPF, self.CPF_OUTRO, "VENDA"),   # RECEITA → VENDA
+            self._nota(self.CPF_OUTRO, self.CPF, "COMPRA"),  # DESPESA → COMPRA
+        ]
+        dados = gerar_dados_planilha(notas, "Produtor", self.CPF)
+        assert "COMPRA" in dados["totais_natureza"]
+        assert "VENDA" in dados["totais_natureza"]
+
+    def test_compra_valores_corretos(self):
+        """Valor da COMPRA corresponde ao da nota onde contribuinte é destinatário."""
+        notas = [
+            self._nota(self.CPF_OUTRO, self.CPF, "VENDA", valor=3500.0),   # COMPRA
+            self._nota(self.CPF, self.CPF_OUTRO, "VENDA", valor=7000.0),   # VENDA
+        ]
+        dados = gerar_dados_planilha(notas, "Produtor", self.CPF)
+        assert dados["totais_natureza"]["COMPRA"]["valor"] == pytest.approx(3500.0)
+        assert dados["totais_natureza"]["VENDA"]["valor"] == pytest.approx(7000.0)
+
+    def test_compra_no_html(self):
+        """HTML gerado menciona COMPRA e usa cor vermelha (#ef4444)."""
+        notas = [
+            self._nota(self.CPF, self.CPF_OUTRO, "VENDA"),
+            self._nota(self.CPF_OUTRO, self.CPF, "COMPRA"),
+        ]
+        dados = gerar_dados_planilha(notas, "Produtor", self.CPF)
+        html = gerar_html_planilha(dados)
+        assert "COMPRA" in html
+        assert "#ef4444" in html  # cor vermelha reservada para COMPRA
+
+    def test_sem_cpf_nao_quebra(self, notas_diversas):
+        """Sem CPF, comportamento legacy inalterado."""
+        dados = gerar_dados_planilha(notas_diversas, "Produtor")
+        assert "VENDA" in dados["totais_natureza"]
+        assert "REMESSA" in dados["totais_natureza"]
+        assert "TRANSFERENCIA" in dados["totais_natureza"]
+
+    def test_compra_na_tabela_por_mes(self):
+        """COMPRA aparece nas colunas mensais corretamente."""
+        notas = [
+            self._nota(self.CPF_OUTRO, self.CPF, "COMPRA", mes="10/03/2026"),
+            self._nota(self.CPF_OUTRO, self.CPF, "COMPRA", mes="20/03/2026"),
+        ]
+        dados = gerar_dados_planilha(notas, "Produtor", self.CPF)
+        # Mês 3 deve ter 2 notas de COMPRA
+        assert dados["por_natureza_mes"]["COMPRA"][3]["notas"] == 2
