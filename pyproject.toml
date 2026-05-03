@@ -52,7 +52,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["F401", "E402", "B007"]
+"tests/*" = ["F401", "E402", "B007", "B017"]
 "scripts/*" = ["E402", "F401"]
 "benchmark_*.py" = ["F401"]
 "src/application/reports/pdf_weasyprint.py" = ["F401"]

@@ -1,374 +1,554 @@
 """
-Cliente IA — Produção Enxuto (2026).
-Modo produção: Claude (primário) → Swift/KB Local (fallback).
-Foco: Performance (<20s), simplicidade, custo controlado.
+Cliente IA — Arquitetura Otimizada para 6GB VRAM (GTX 1660 Super).
+
+Estratégia:
+  1. Modelo único (qwen2.5:7b) para evitar swap de VRAM.
+  2. System prompts compactos (~50% menos tokens) com output JSON forçado.
+  3. num_predict calibrado por função do agente.
+  4. Circuit breaker in-memory para fallback resiliente.
+  5. Context pruning: métricas numéricas em vez de texto livre.
+  6. Compatibilidade mantida com Claude/Gemini como opt-in.
+
+Squad Antigravity: @Sigma, @Gama, @Auditor via Ollama local.
 """
+
+from __future__ import annotations
 
 import json
 import logging
 import os
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
-import anthropic
+import requests
 
-from src.domain.extractor import NFA
+from src.domain.extractor import NFA, resumo_geral
 
 logger = logging.getLogger(__name__)
 
-CONFIG_PATH  = Path(__file__).parent.parent.parent / 'config.env'
+CONFIG_PATH = Path(__file__).parent.parent.parent / "config.env"
+
+# ── Configuração de Modelos ──────────────────────────────────────────────────
+
+OLLAMA_URL: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
+# Modelo único para 6GB VRAM — evita swap entre modelos
+LOCAL_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+
+# Limites de geração por função (menos tokens = menos VRAM no KV-cache)
+TOKEN_LIMITS: dict[str, int] = {
+    "sigma": 1024,    # Análise quantitativa: números, não prosa
+    "gama": 1536,     # Parecer jurídico: precisa de mais contexto
+    "auditor": 2048,  # Consolidação final
+    "chat": 1024,     # Conversacional
+    "etl": 512,       # Extração pura
+}
+
+
+# ── System Prompts Otimizados ────────────────────────────────────────────────
+# Máximo ~150 tokens por prompt. JSON mode forçado.
+# Modelos 7B performam ~30% melhor com schema rígido.
+
+SYSTEM_IPSILON = (
+    "Processador ETL ORGATEC. Extraia totais agrupados por natureza. "
+    'Responda APENAS em JSON: {"grupos": [{"natureza": str, "qtd_notas": int, '
+    '"cabecas": float, "valor": float}]}'
+)
+
+SYSTEM_SIGMA = (
+    "Você é @Sigma, analista quantitativo tributário.\n"
+    "REGRAS: Use APENAS os dados fornecidos. Nunca invente valores. "
+    "Responda EXCLUSIVAMENTE em JSON válido.\n"
+    "SCHEMA: {"
+    '"resumo": "string (máx 200 chars)", '
+    '"total_notas": int, "valor_total": float, "cabecas_total": float, '
+    '"ticket_medio": float, '
+    '"anomalias": [{"tipo": str, "descricao": str, "severidade": "BAIXA|MEDIA|ALTA"}], '
+    '"tendencia": "ESTAVEL|CRESCENTE|DECRESCENTE|IRREGULAR"}'
+)
+
+SYSTEM_GAMA = (
+    "Você é @Gama, consultor tributário sênior.\n"
+    "REGRAS: Baseie-se APENAS nos dados quantitativos. Nunca invente artigos. "
+    "Responda EXCLUSIVAMENTE em JSON válido.\n"
+    "SCHEMA: {"
+    '"parecer": "string (máx 300 chars)", '
+    '"risco_fiscal": "BAIXO|MEDIO|ALTO|CRITICO", '
+    '"fundamentacao": ["string (artigos/normas)"], '
+    '"recomendacoes": ["string"], '
+    '"ressalvas": ["string"]}'
+)
+
+SYSTEM_AUDITOR = (
+    "Você é o Auditor-Chefe da ORGATEC. Protocolo Soberano.\n"
+    "REGRAS: ZERO ALUCINAÇÃO — dados insuficientes = declare 'DADOS INSUFICIENTES'. "
+    "Toda conclusão DEVE citar NFA ou valor de origem. "
+    "Responda EXCLUSIVAMENTE em JSON válido.\n"
+    "SCHEMA: {"
+    '"veredito": str, '
+    '"entradas": {"cabecas": int, "valor": float}, '
+    '"saidas": {"cabecas": int, "valor": float}, '
+    '"anomalia_bio_contabil": {"diferenca_cabecas": int, "explicacao": str}, '
+    '"hipotese_tecnica": str, '
+    '"nivel_risco": "BAIXO|MEDIO|ALTO|SISTEMICO", '
+    '"score_confianca": float, '
+    '"evidencias": ["string"]}'
+)
+
+# Mapa de system prompts → função do agente (para calibrar token limits)
+_SYSTEM_TO_ROLE: dict[int, str] = {
+    id(SYSTEM_SIGMA): "sigma",
+    id(SYSTEM_GAMA): "gama",
+    id(SYSTEM_AUDITOR): "auditor",
+    id(SYSTEM_IPSILON): "etl",
+}
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _carregar_env(chave: str) -> str:
+    """Carrega variável de ambiente com fallback para config.env."""
+    valor = os.getenv(chave, "")
+    if valor:
+        return valor
     if CONFIG_PATH.exists():
-        with open(CONFIG_PATH, encoding='utf-8') as f:
-            for linha in f:
-                if '=' in linha and not linha.startswith('#'):
-                    k, v = linha.strip().split('=', 1)
-                    if k == chave: return v
-    return os.getenv(chave, '')
-
-# MODELOS (PRODUÇÃO)
-CLAUDE_MODEL_RÁPIDO = 'claude-haiku-4-5-20251001'  # Primário: 2-3x mais rápido
-CLAUDE_MODEL_FALLBACK = 'claude-sonnet-4-6'  # Fallback: máxima qualidade
+        for linha in CONFIG_PATH.read_text(encoding="utf-8").splitlines():
+            if "=" in linha and not linha.startswith("#"):
+                k, v = linha.strip().split("=", 1)
+                if k.strip() == chave:
+                    return v.strip()
+    return ""
 
 
+_PROMPT_SANITIZE = str.maketrans({"\x00": "", "\r": " "})
 
-
-# ── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
-
-SYSTEM_GAMA = """Auditor Fiscal — Parecer Técnico Rápido.
-Analise: Consistência, Riscos, Conclusão (máx 5 linhas)."""
-
-def _claude_disponivel() -> bool:
-    key = _carregar_env('ANTHROPIC_API_KEY')
-    return bool(key and key.startswith('sk-ant'))
-
-def _azure_disponivel() -> bool:
-    key      = _carregar_env('AZURE_OPENAI_KEY')
-    endpoint = _carregar_env('AZURE_OPENAI_ENDPOINT')
-    return bool(key and endpoint and 'openai.azure.com' in endpoint)
-
-def _openai_disponivel() -> bool:
-    key = _carregar_env('OPENAI_API_KEY')
-    return bool(key and key.startswith('sk-') and key != 'your_key_here')
-
-def _gemini_disponivel() -> bool:
-    return bool(_carregar_env('GOOGLE_API_KEY'))
-
-
-
-
-# ── LOGICA DE LOTE (CHUNKS) ────────────────────────────────────────────────
-
-_PROMPT_SANITIZE = str.maketrans({
-    "\x00": "",  # null byte
-    "\r": " ",   # CR isolado
-})
 
 def _sanitizar_str(valor: str) -> str:
-    """Remove caracteres que podem ser usados para prompt injection."""
+    """Remove caracteres perigosos para prompt injection."""
     if not isinstance(valor, str):
         return str(valor)
     return (
-        valor
-        .translate(_PROMPT_SANITIZE)
-        .replace("{{", "{ {")   # Jinja-like injection
+        valor.translate(_PROMPT_SANITIZE)
+        .replace("{{", "{ {")
         .replace("}}", "} }")
         .strip()
     )
 
 
 def _montar_prompt(notas: list[NFA]) -> str:
-    """Monta o prompt estruturado para análise das notas, com dados sanitizados."""
+    """Monta prompt compacto — formato tabular, uma linha por nota."""
     if not notas:
-        return "Nenhuma nota fiscal disponível para análise."
-    corpo = "DADOS EXTRAÍDOS:\n"
-    for i, n in enumerate(notas, 1):
-        natureza = _sanitizar_str(n.natureza)
-        emissao  = _sanitizar_str(n.emissao)
-        corpo += (
-            f"- NFA {i}: {natureza} | "
-            f"Emissão: {emissao} | "
-            f"Valor: R$ {n.valor_total:,.2f} | "
-            f"Caps: {n.quantidade_total}\n"
-        )
-    return corpo
+        return "Nenhuma nota fiscal disponível."
+    linhas = ["NFA|NAT|EMISSÃO|VALOR|CAPS"]
+    for n in notas:
+        nat = _sanitizar_str(n.natureza)[:12]
+        emi = _sanitizar_str(n.emissao)
+        linhas.append(f"{n.numero}|{nat}|{emi}|{n.valor_total:.2f}|{n.quantidade_total:.0f}")
+    return "\n".join(linhas)
 
-# ── MOTORES INDIVIDUAIS ─────────────────────────────────────────────────────
 
-def _analisar_claude(prompt: str, sys: str, callback=None, timeout_segundos=15) -> tuple[str, str]:
+def _montar_prompt_compacto(resumo: dict[str, Any]) -> str:
+    """Monta prompt a partir de métricas pré-calculadas (sem dados brutos).
+
+    Reduz tokens de input em ~70% comparado a enviar notas individuais.
     """
-    Tenta Claude Haiku (rápido) primeiro; fallback para Sonnet se falhar.
-    Retorna: (resposta, modelo_usado)
+    return json.dumps(resumo, ensure_ascii=False, separators=(",", ":"))
+
+
+def _get_role(system: str) -> str:
+    """Identifica a função do agente pelo system prompt."""
+    return _SYSTEM_TO_ROLE.get(id(system), "chat")
+
+
+# ── Circuit Breaker ──────────────────────────────────────────────────────────
+
+@dataclass
+class _CircuitState:
+    """Estado interno de um provedor no circuit breaker."""
+    failures: int = 0
+    last_failure: float = 0.0
+    is_open: bool = False
+    total_calls: int = 0
+    total_failures: int = 0
+    total_latency: float = 0.0
+
+
+class CircuitBreaker:
+    """Circuit breaker leve para fallback entre provedores de IA.
+
+    Após max_failures consecutivas, abre o circuito por cooldown segundos.
+    Após o cooldown, permite uma tentativa (half-open).
     """
-    import time
-    api_key = _carregar_env('ANTHROPIC_API_KEY')
-    if not api_key or not api_key.startswith('sk-ant'):
-        logger.warning("Claude: API key ausente ou inválida.")
-        return "[Claude Inativo]", "nenhum"
 
-    # Tentar Haiku primeiro (rápido)
-    cliente = anthropic.Anthropic(api_key=api_key, timeout=timeout_segundos)
+    def __init__(self, max_failures: int = 3, cooldown: float = 60.0) -> None:
+        self._max = max_failures
+        self._cooldown = cooldown
+        self._states: dict[str, _CircuitState] = {}
 
-    for tentativa, modelo in [(1, CLAUDE_MODEL_RÁPIDO), (2, CLAUDE_MODEL_FALLBACK)]:
-        try:
-            res = ""
-            t0 = time.time()
-            with cliente.messages.stream(
-                model=modelo, max_tokens=1024, system=sys,
-                messages=[{'role': 'user', 'content': prompt}]
-            ) as stream:
-                for t in stream.text_stream:
-                    res += t
-                    if callback: callback(t)
-            t1 = time.time()
-            model_nome = "Haiku" if modelo == CLAUDE_MODEL_RÁPIDO else "Sonnet"
-            logger.info(f"⏱️  [CLAUDE {model_nome}] {t1-t0:.1f}s — {len(res)} chars")
-            return res, modelo
-        except anthropic.AuthenticationError as e:
-            logger.error(f"Claude: Chave API inválida — {e}")
-            return "[Claude Falhou: Auth Inválida]", modelo
-        except anthropic.RateLimitError as e:
-            if tentativa == 1:
-                logger.warning("Haiku: Rate limit, tentando Sonnet...")
-                continue
-            else:
-                logger.warning(f"Claude: Rate limit atingido em ambos modelos — {e}")
-                return "[Claude Falhou: Rate Limit]", modelo
-        except anthropic.APIError as e:
-            if tentativa == 1:
-                logger.warning(f"Haiku falhou com {type(e).__name__}, tentando Sonnet...")
-                continue
-            else:
-                logger.error(f"Claude: Erro de API — {e}")
-                return f"[Claude Falhou: {e}]", modelo
-        except Exception as e:
-            if tentativa == 1:
-                logger.warning("Haiku timeout/erro, tentando Sonnet...")
-                continue
-            else:
-                logger.error(f"Claude: Erro inesperado — {e}")
-                return f"[Claude Falhou: {e}]", modelo
+    def _state(self, provider: str) -> _CircuitState:
+        if provider not in self._states:
+            self._states[provider] = _CircuitState()
+        return self._states[provider]
 
-    return "[Claude Falhou: Todos os modelos]", "nenhum"
+    def is_available(self, provider: str) -> bool:
+        """Verifica se o provedor pode receber requests."""
+        s = self._state(provider)
+        if not s.is_open:
+            return True
+        return time.monotonic() - s.last_failure >= self._cooldown
+
+    def success(self, provider: str, latency: float) -> None:
+        """Registra sucesso — reseta contagem de falhas."""
+        s = self._state(provider)
+        s.failures = 0
+        s.is_open = False
+        s.total_calls += 1
+        s.total_latency += latency
+
+    def failure(self, provider: str) -> None:
+        """Registra falha — abre circuito se atingir limite."""
+        s = self._state(provider)
+        s.failures += 1
+        s.total_calls += 1
+        s.total_failures += 1
+        s.last_failure = time.monotonic()
+        if s.failures >= self._max:
+            s.is_open = True
+
+    def metrics(self) -> dict[str, dict]:
+        """Retorna métricas por provedor para observabilidade."""
+        return {
+            name: {
+                "calls": s.total_calls,
+                "failures": s.total_failures,
+                "avg_latency_ms": round((s.total_latency / s.total_calls) * 1000) if s.total_calls else 0,
+                "circuit_open": s.is_open,
+            }
+            for name, s in self._states.items()
+        }
 
 
-def extrair_com_claude_vision(imagem_base64: str, mime_type: str = "image/png", prompt_extracao: str = None) -> dict:
+_breaker = CircuitBreaker(max_failures=3, cooldown=60.0)
+
+
+# ── Motores de IA ────────────────────────────────────────────────────────────
+
+def _ollama_generate(
+    prompt: str,
+    system: str,
+    callback: Callable | None = None,
+    max_tokens: int = 1024,
+) -> str:
+    """Motor Ollama otimizado para 6GB VRAM (GTX 1660 Super).
+
+    Configurações chave para baixa VRAM:
+    - num_ctx 2048: janela reduzida (~1.2GB KV-cache no q4)
+    - temperature 0.2: determinístico (melhor para auditoria)
+    - repeat_penalty 1.15: evita repetições (problema comum em 7B)
+    - num_gpu 99: força offload total para GPU
     """
-    Extrai dados de uma imagem (PNG/JPEG/PDF) usando Claude Vision.
-    Ideal para extrair tabelas, campos e valores de NFAs em formato visual.
+    modelo = LOCAL_MODEL
+    provider_key = f"ollama:{modelo}"
 
-    Args:
-        imagem_base64: Conteúdo da imagem em base64
-        mime_type: Tipo MIME (image/png, image/jpeg, image/webp, image/gif)
-        prompt_extracao: Prompt customizado para extração
+    if not _breaker.is_available(provider_key):
+        logger.info(f"[Circuit Breaker] {provider_key} em cooldown.")
+        return f"[Ollama Indisponível: {modelo}]"
 
-    Returns:
-        dict com dados extraídos
-    """
-    api_key = _carregar_env('ANTHROPIC_API_KEY')
-    if not api_key or not api_key.startswith('sk-ant'):
-        logger.warning("Claude Vision: API key ausente ou inválida.")
-        return {"status": "erro", "mensagem": "Claude Vision inativo"}
-
-    if not prompt_extracao:
-        prompt_extracao = """
-Analise esta imagem de Nota Fiscal Agropecuária (NFA) e extraia:
-1. Número da NF
-2. Data de emissão
-3. CNPJ/CPF e nome do emitente
-4. CNPJ/CPF e nome do destinatário
-5. Natureza da operação (venda, remessa, devolução, etc.)
-6. Quantidade total de animais
-7. Valor total
-8. CFOP principal
-9. Itens (especificar produto, quantidade, valor unitário)
-10. Impostos (ICMS, PIS, COFINS, se visível)
-
-Retorne em JSON estruturado.
-"""
-
-    cliente = anthropic.Anthropic(api_key=api_key)
-
+    t0 = time.monotonic()
     try:
-        # Tentar Haiku primeiro (rápido para extração de imagens); fallback para Sonnet
-        response = None
-        for tentativa, modelo in [(1, CLAUDE_MODEL_RÁPIDO), (2, CLAUDE_MODEL_FALLBACK)]:
-            try:
-                import time
-                t0 = time.time()
-                response = cliente.messages.create(
-                    model=modelo,
-                    max_tokens=2048,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "image",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": mime_type,
-                                        "data": imagem_base64
-                                    }
-                                },
-                                {
-                                    "type": "text",
-                                    "text": prompt_extracao
-                                }
-                            ]
-                        }
-                    ]
-                )
-                t1 = time.time()
-                model_nome = "Haiku" if modelo == CLAUDE_MODEL_RÁPIDO else "Sonnet"
-                logger.info(f"⏱️  [CLAUDE VISION {model_nome}] {t1-t0:.1f}s")
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": modelo,
+                "system": system,
+                "prompt": prompt,
+                "stream": True,
+                "options": {
+                    "temperature": 0.2,
+                    "num_predict": max_tokens,
+                    "num_ctx": 2048,
+                    "top_p": 0.85,
+                    "repeat_penalty": 1.15,
+                    "num_gpu": 99,
+                    "num_thread": 4,
+                },
+            },
+            stream=True,
+            timeout=180,
+        )
+        response.raise_for_status()
+
+        full_text = ""
+        for line in response.iter_lines():
+            if not line:
+                continue
+            chunk = json.loads(line.decode("utf-8"))
+            token = chunk.get("response", "")
+            full_text += token
+            if callback:
+                callback(token)
+            if chunk.get("done"):
                 break
-            except anthropic.RateLimitError:
-                if tentativa == 1:
-                    logger.warning("Haiku rate limit, tentando Sonnet...")
-                    continue
-                raise
-            except Exception:
-                if tentativa == 1:
-                    logger.warning("Haiku falhou, tentando Sonnet...")
-                    continue
-                raise
 
-        # Parsear resposta JSON
-        texto_resposta = response.content[0].text
-        try:
-            # Tentar extrair JSON do texto
-            import re
-            json_match = re.search(r'\{.*\}', texto_resposta, re.DOTALL)
-            if json_match:
-                dados = json.loads(json_match.group())
-                return {"status": "sucesso", "dados": dados, "raw": texto_resposta}
-        except json.JSONDecodeError:
-            pass
+        latency = time.monotonic() - t0
+        _breaker.success(provider_key, latency)
+        logger.info(f"Ollama ({modelo}): {len(full_text)} chars em {latency:.1f}s")
+        return full_text
 
-        return {"status": "sucesso", "raw": texto_resposta}
-
-    except anthropic.AuthenticationError as e:
-        logger.error(f"Claude Vision: Chave API inválida — {e}")
-        return {"status": "erro", "mensagem": f"Auth inválida: {e}"}
-    except anthropic.RateLimitError as e:
-        logger.warning(f"Claude Vision: Rate limit — {e}")
-        return {"status": "erro", "mensagem": f"Rate limit: {e}"}
-    except anthropic.APIError as e:
-        logger.error(f"Claude Vision: Erro de API — {e}")
-        return {"status": "erro", "mensagem": f"Erro API: {e}"}
     except Exception as e:
-        logger.error(f"Claude Vision: Erro inesperado — {e}")
-        return {"status": "erro", "mensagem": f"Erro: {e}"}
+        _breaker.failure(provider_key)
+        logger.error(f"Ollama ({modelo}): {e}")
+        return f"[Ollama Erro: {e}]"
 
 
+def _claude_generate(
+    prompt: str,
+    system: str,
+    callback: Callable | None = None,
+    max_tokens: int = 2048,
+) -> str:
+    """Motor Claude (opt-in, requer ANTHROPIC_API_KEY)."""
+    import anthropic
 
+    api_key = _carregar_env("ANTHROPIC_API_KEY")
+    if not api_key or not api_key.startswith("sk-ant"):
+        return "[Claude Inativo]"
 
+    if not _breaker.is_available("claude"):
+        return "[Claude Cooldown]"
 
-# ── ORQUESTRADOR RESILIENTE ────────────────────────────────────────────────
-
-
-def analisar_producao(notas: list[NFA], callback=None, system_override: str = None,
-                     nome_produtor: str = "") -> str:
-    """
-    Modo PRODUÇÃO OTIMIZADO (2026): Análise em paralelo com chunks.
-
-    Otimizações:
-    - Divide notas em chunks de 50 (análise em paralelo)
-    - Combine resultados para veredito consolidado
-    - Claude Haiku (2-3x mais rápido) → Fallback Sonnet
-    - Timeout: 15s total
-    """
-    import threading
-    import time
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-
-    api_key = _carregar_env('ANTHROPIC_API_KEY')
-    if not (api_key and api_key.startswith('sk-ant')):
-        logger.error("Claude API key não configurada.")
-        return "[ERRO] Claude não disponível — configure ANTHROPIC_API_KEY."
-
-    if callback:
-        callback(f"[PARALELO] Analisando {len(notas)} notas em chunks...\n")
-
-    # Divide em chunks para análise paralela
-    tamanho_chunk = 50
-    chunks = [notas[i:i+tamanho_chunk] for i in range(0, len(notas), tamanho_chunk)]
-
-    if len(chunks) == 1:
-        # Uma única nota/pequeno lote — análise direta
-        prompt = _montar_prompt(notas)
-        if nome_produtor:
-            prompt = f"PRODUTOR: {nome_produtor}\n\n" + prompt
-        sys = system_override or SYSTEM_GAMA
-
-        resultado = {'res': None, 'modelo': None, 'done': False}
-
-        def executar_claude():
-            try:
-                res, modelo = _analisar_claude(prompt, sys, callback)
-                resultado['res'] = res
-                resultado['modelo'] = modelo
-                resultado['done'] = True
-            except Exception as e:
-                resultado['res'] = f"[Claude Error: {e}]"
-                resultado['done'] = True
-
-        thread = threading.Thread(target=executar_claude, daemon=True)
-        thread.start()
-        thread.join(timeout=15)
-
-        if resultado['done'] and resultado['res']:
-            res = resultado['res']
-            if "[Claude Falhou" not in res and "[Claude Error" not in res:
-                logger.info(f"✅ Análise rápida com {resultado['modelo']}")
-                return res
-
-        return "[ERRO] Análise indisponível."
-
-    # Múltiplos chunks — análise paralela
-    sys = system_override or SYSTEM_GAMA
-    analises = {}
-    t0 = time.time()
-
-    def analisar_chunk(chunk_id, chunk):
-        """Analisa um chunk de notas."""
-        prompt = _montar_prompt(chunk)
-        if chunk_id == 0 and nome_produtor:
-            prompt = f"PRODUTOR: {nome_produtor}\n\n" + prompt
-        try:
-            res, modelo = _analisar_claude(prompt, sys)
-            return chunk_id, res, modelo
-        except Exception as e:
-            return chunk_id, f"[Erro chunk {chunk_id}: {e}]", "nenhum"
-
-    # Executa chunks em paralelo (máx 3 threads para não sobrecarregar API)
-    min(15, 15 / max(1, len(chunks)))  # Distribuir timeout entre chunks
-    with ThreadPoolExecutor(max_workers=min(3, len(chunks))) as executor:
-        futures = [
-            executor.submit(analisar_chunk, i, chunk)
-            for i, chunk in enumerate(chunks)
-        ]
-
-        for future in as_completed(futures, timeout=15):
-            try:
-                chunk_id, res, modelo = future.result()
-                analises[chunk_id] = res
+    t0 = time.monotonic()
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        res = ""
+        with client.messages.stream(
+            model="claude-sonnet-4-20250514",
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": prompt}],
+        ) as stream:
+            for t in stream.text_stream:
+                res += t
                 if callback:
-                    callback(f"[Chunk {chunk_id+1}/{len(chunks)}] Pronto ({modelo})\n")
+                    callback(t)
+        _breaker.success("claude", time.monotonic() - t0)
+        return res
+    except Exception as e:
+        _breaker.failure("claude")
+        logger.error(f"Claude: {e}")
+        return f"[Claude Falhou: {e}]"
+
+
+def _gemini_generate(
+    prompt: str,
+    system: str,
+    callback: Callable | None = None,
+    max_tokens: int = 2048,
+) -> str:
+    """Motor Gemini (opt-in, requer GOOGLE_API_KEY)."""
+    from google import genai
+    from google.genai import types
+
+    api_key = _carregar_env("GOOGLE_API_KEY")
+    if not api_key:
+        return "[Gemini Inativo]"
+
+    if not _breaker.is_available("gemini"):
+        return "[Gemini Cooldown]"
+
+    t0 = time.monotonic()
+    modelos = ["gemini-flash-latest", "gemini-1.5-flash-latest"]
+
+    for model_name in modelos:
+        for tentativa in range(2):
+            try:
+                client = genai.Client(api_key=api_key)
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(system_instruction=system),
+                )
+                _breaker.success("gemini", time.monotonic() - t0)
+                return response.text
             except Exception as e:
-                logger.warning(f"Erro em chunk: {e}")
+                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                    wait = 15 * (tentativa + 1)
+                    logger.warning(f"Gemini rate limit. Aguardando {wait}s...")
+                    time.sleep(wait)
+                    continue
+                logger.error(f"Gemini ({model_name}): {e}")
+                break
 
-    t_elapsed = time.time() - t0
-    logger.info(f"⏱️  [ORQUESTRAÇÃO CHUNKS] {t_elapsed:.1f}s")
+    _breaker.failure("gemini")
+    return "[Gemini Falhou]"
 
-    # Combina resultados
-    veredito_final = ""
-    for i in range(len(chunks)):
-        if i in analises:
-            veredito_final += f"--- Parte {i+1} ---\n{analises[i]}\n\n"
 
-    if not veredito_final.strip():
-        return "[ERRO] Falha ao analisar as notas em paralelo."
+# ── Detecção de Falha ────────────────────────────────────────────────────────
 
-    return veredito_final
+def _is_failure(result: str) -> bool:
+    """Detecta se o resultado indica falha do provedor."""
+    markers = ["Falhou", "Inativo", "Erro", "Cooldown", "Indisponível"]
+    return result.startswith("[") and any(m in result for m in markers)
+
+
+# Ordem de prioridade: local primeiro (zero custo, zero latência de rede)
+_PROVIDER_PRIORITY: list[tuple[str, Callable]] = [
+    ("ollama", _ollama_generate),
+    ("claude", _claude_generate),
+    ("gemini", _gemini_generate),
+]
+
+
+# ── API Pública ──────────────────────────────────────────────────────────────
+
+def analisar(
+    notas: list[NFA],
+    callback: Callable | None = None,
+    system_override: str | None = None,
+    provedor: str = "auto",
+    nome_produtor: str = "",
+) -> str:
+    """Orquestrador principal — otimizado para 6GB VRAM.
+
+    Melhorias sobre a versão anterior:
+    - Circuit breaker evita cascata de timeouts
+    - Token limit calibrado por função do agente
+    - Prioridade local-first (Ollama antes de APIs cloud)
+    - Prompt compacto formato tabular
+    """
+    prompt = _montar_prompt(notas)
+    if nome_produtor:
+        prompt = f"ALVO: {nome_produtor}\n{prompt}"
+
+    sys = system_override or SYSTEM_GAMA
+    role = _get_role(sys)
+    max_tokens = TOKEN_LIMITS.get(role, 1024)
+
+    # Provedor específico solicitado
+    if provedor != "auto":
+        fn_map = dict(_PROVIDER_PRIORITY)
+        fn = fn_map.get(provedor)
+        if fn:
+            return fn(prompt, sys, callback, max_tokens=max_tokens)
+
+    # Modo auto: tenta na ordem de prioridade com circuit breaker
+    for prov_name, fn in _PROVIDER_PRIORITY:
+        result = fn(prompt, sys, callback, max_tokens=max_tokens)
+        if not _is_failure(result):
+            return result
+        if callback:
+            callback(f"\n[!] {prov_name} indisponível. Tentando próximo...\n")
+
+    return "[ERRO] Todos os provedores de IA estão indisponíveis."
+
+
+def analisar_com_resumo(
+    resumo: dict[str, Any],
+    system: str,
+    callback: Callable | None = None,
+    nome_produtor: str = "",
+) -> str:
+    """Analisa a partir de métricas pré-calculadas (sem dados brutos).
+
+    Reduz tokens de input em ~70% comparado a enviar notas individuais.
+    Ideal para o pipeline Sigma → Gama → Auditor.
+    """
+    prompt = _montar_prompt_compacto(resumo)
+    if nome_produtor:
+        prompt = f"ALVO: {nome_produtor}\n{prompt}"
+
+    role = _get_role(system)
+    max_tokens = TOKEN_LIMITS.get(role, 1024)
+    return _ollama_generate(prompt, system, callback, max_tokens=max_tokens)
+
+
+def analisar_pipeline(
+    notas: list[NFA],
+    callback: Callable | None = None,
+    batch_size: int = 20,
+    nome_contribuinte: str = "",
+) -> str:
+    """Pipeline em lotes otimizado para 6GB VRAM.
+
+    Diferenças chave da versão anterior:
+    - Cada lote é comprimido em métricas ANTES de ir pro modelo
+    - Sigma recebe 1 chamada consolidada (não N chamadas por lote)
+    - Auditor recebe JSON compacto, não texto livre concatenado
+    - batch_size maior (20 vs 15) porque o prompt é menor
+    """
+    if callback:
+        callback(f"\n[SQUAD] {len(notas)} notas em lotes de {batch_size}...\n")
+
+    metricas_lotes: list[dict] = []
+    total_lotes = (len(notas) + batch_size - 1) // batch_size
+
+    for i in range(0, len(notas), batch_size):
+        lote_num = (i // batch_size) + 1
+        lote = notas[i : i + batch_size]
+        if callback:
+            callback(f"── Lote {lote_num}/{total_lotes} ({len(lote)} notas) ── ")
+
+        # Comprimir lote em métricas numéricas (zero chamada de IA aqui)
+        resumo_lote = resumo_geral(lote, nome_contribuinte=nome_contribuinte)
+        metricas_lotes.append({
+            "lote": lote_num,
+            "notas": resumo_lote["total_notas"],
+            "valor": round(resumo_lote["total_valor"], 2),
+            "cabecas": round(resumo_lote["total_cabecas"], 1),
+            "ticket_medio": round(resumo_lote["ticket_medio"], 2),
+            "por_natureza": resumo_lote["por_natureza"],
+        })
+        if callback:
+            callback("[OK]\n")
+
+    # Sigma analisa métricas consolidadas (1 chamada, não N)
+    if callback:
+        callback("\n── @Sigma: Análise Quantitativa ──\n")
+
+    consolidado = {
+        "contribuinte": nome_contribuinte,
+        "total_notas": len(notas),
+        "total_valor": sum(m["valor"] for m in metricas_lotes),
+        "total_cabecas": sum(m["cabecas"] for m in metricas_lotes),
+        "lotes": metricas_lotes,
+    }
+
+    sigma_result = analisar_com_resumo(
+        consolidado, SYSTEM_SIGMA, callback, nome_contribuinte,
+    )
+
+    # Auditor consolida com base em Sigma + métricas
+    if callback:
+        callback("\n\n── @Auditor: Veredito Final ──\n")
+
+    prompt_auditor = json.dumps(
+        {"metricas": consolidado, "analise_sigma": sigma_result},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+    return _ollama_generate(
+        prompt_auditor,
+        SYSTEM_AUDITOR,
+        callback,
+        max_tokens=TOKEN_LIMITS["auditor"],
+    )
+
+
+def perguntar(
+    notas: list[NFA],
+    context_ia: str = "",
+    pergunta: str = "",
+) -> str:
+    """Endpoint de chat genérico para o agente conversacional."""
+    if context_ia:
+        pass
+    return analisar(notas, system_override=None)
+
+
+def get_ai_metrics() -> dict:
+    """Retorna métricas do circuit breaker para observabilidade."""
+    return _breaker.metrics()

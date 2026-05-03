@@ -1,106 +1,155 @@
 """
-ORGATEC – Módulo de Segurança JWT
-Suporta dois provedores de token (transparente para as rotas):
-  1. JWT próprio (HS256) — padrão atual
-  2. Supabase Auth JWT — quando SUPABASE_JWT_SECRET estiver configurado
+ORGATEC – Módulo de Segurança (JWT + Bcrypt + Refresh Token)
+
+Segurança:
+- CRASH se JWT_SECRET_KEY não estiver definida (nunca usar fallback inseguro)
+- Access token curto (30min) + Refresh token longo (7 dias)
+- Refresh tokens com claim "type" para impedir uso cruzado
 """
 
 from __future__ import annotations
 
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 
-import bcrypt as _bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 from pydantic import BaseModel
 
-# ── Configurações JWT próprio ─────────────────────────────────────────────────
-SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "TROQUE_EM_PRODUCAO_32_CHARS_MINIMO!")
-ALGORITHM: str = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "480"))  # 8h
+# ── Configuração JWT ─────────────────────────────────────────────────────────
 
-# ── Configurações Supabase Auth ───────────────────────────────────────────────
-_SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
-_SUPABASE_CONFIGURADO: bool = bool(_SUPABASE_JWT_SECRET and "AQUI" not in _SUPABASE_JWT_SECRET)
+JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
+JWT_ALGORITHM: str = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
-# ── Crypto ───────────────────────────────────────────────────────────────────
+# SEGURANÇA CRÍTICA: Nunca rodar sem secret configurado
+if not JWT_SECRET_KEY:
+    print(
+        "\n[ERRO FATAL] JWT_SECRET_KEY não está definida.\n"
+        "Configure a variável de ambiente JWT_SECRET_KEY com pelo menos 32 caracteres.\n"
+        "Exemplo: export JWT_SECRET_KEY=$(openssl rand -hex 32)\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+if len(JWT_SECRET_KEY) < 32:
+    print(
+        f"\n[ERRO FATAL] JWT_SECRET_KEY tem apenas {len(JWT_SECRET_KEY)} caracteres.\n"
+        "Use pelo menos 32 caracteres para segurança adequada.\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+# ── Bcrypt ───────────────────────────────────────────────────────────────────
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
+# ── Schemas ──────────────────────────────────────────────────────────────────
+
 class TokenData(BaseModel):
-    sub: str          # user id como string
-    email: str
+    sub: str
+    email: str = ""
     role: str = "user"
 
 
-# ── Funções de senha (bcrypt direto, sem passlib) ────────────────────────────
-def hash_password(plain: str) -> str:
-    """Gera hash bcrypt sem passar por passlib (evita bug truncate em bcrypt≥4.1)."""
-    return _bcrypt.hashpw(plain.encode("utf-8"), _bcrypt.gensalt(12)).decode("utf-8")
+class TokenPair(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int  # segundos até expiração do access token
+
+
+# ── Funções ──────────────────────────────────────────────────────────────────
+
+def hash_password(password: str) -> str:
+    """Gera hash bcrypt da senha."""
+    return pwd_context.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Verifica senha com bcrypt direto. Compatível com hashes gerados por passlib ($2b$)."""
-    try:
-        return _bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
-    except Exception:
-        return False
+    """Verifica senha contra hash bcrypt."""
+    return pwd_context.verify(plain, hashed)
 
 
-# ── Funções de token ─────────────────────────────────────────────────────────
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    """Cria access token JWT curto (30min por padrão)."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode["exp"] = expire
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    to_encode["type"] = "access"
+    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def _decode_supabase_token(token: str) -> TokenData:
-    """Valida token emitido pelo Supabase Auth (HS256 com SUPABASE_JWT_SECRET)."""
-    payload = jwt.decode(token, _SUPABASE_JWT_SECRET, algorithms=["HS256"])
-    # Supabase coloca email em payload["email"] e sub = user UUID
-    email = payload.get("email", "")
-    role_meta = (payload.get("user_metadata") or {}).get("role", "user")
-    app_meta_role = (payload.get("app_metadata") or {}).get("role", role_meta)
-    return TokenData(sub=payload["sub"], email=email, role=app_meta_role)
+def create_refresh_token(data: dict) -> str:
+    """Cria refresh token JWT longo (7 dias por padrão)."""
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode["exp"] = expire
+    to_encode["type"] = "refresh"
+    return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
 
-def decode_token(token: str) -> TokenData:
-    """Tenta Supabase Auth primeiro; fallback para JWT próprio."""
-    # 1. Supabase Auth
-    if _SUPABASE_CONFIGURADO:
-        try:
-            return _decode_supabase_token(token)
-        except JWTError:
-            pass  # não é um token Supabase — tenta JWT próprio
+def create_token_pair(data: dict) -> TokenPair:
+    """Gera par access + refresh token."""
+    return TokenPair(
+        access_token=create_access_token(data),
+        refresh_token=create_refresh_token(data),
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
 
-    # 2. JWT próprio
+
+def verify_refresh_token(token: str) -> TokenData:
+    """Valida refresh token e retorna dados do usuário.
+
+    Rejeita access tokens usados como refresh (via claim 'type').
+    """
+    error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Refresh token inválido ou expirado.",
+    )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise error
+        sub = payload.get("sub", "")
+        if not sub:
+            raise error
         return TokenData(
-            sub=payload["sub"],
-            email=payload["email"],
+            sub=sub,
+            email=payload.get("email", ""),
             role=payload.get("role", "user"),
         )
     except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido ou expirado.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise error
 
 
-# ── Dependência FastAPI ──────────────────────────────────────────────────────
 def get_current_user(token: str = Depends(oauth2_scheme)) -> TokenData:
-    """Injete em qualquer rota protegida: current_user: TokenData = Depends(get_current_user)"""
-    return decode_token(token)
-
-
-def require_admin(current_user: TokenData = Depends(get_current_user)) -> TokenData:
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Acesso restrito a administradores.")
-    return current_user
+    """Valida access token JWT e retorna dados do usuário autenticado."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Token inválido ou expirado.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        # Rejeitar refresh tokens usados como access
+        if payload.get("type") == "refresh":
+            raise credentials_exception
+        sub: str = payload.get("sub", "")
+        if not sub:
+            raise credentials_exception
+        return TokenData(
+            sub=sub,
+            email=payload.get("email", ""),
+            role=payload.get("role", "user"),
+        )
+    except JWTError:
+        raise credentials_exception

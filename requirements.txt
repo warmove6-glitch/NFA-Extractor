@@ -1,15 +1,51 @@
-pytest>=7.0.0
+# ORGATEC Sovereign Requirements
+# --------------------------------
+
+# API & Web
+fastapi>=0.110.0
+uvicorn>=0.27.0
+python-multipart>=0.0.9
+
+# Dados & Matemática
+pandas>=2.0.0
+numpy>=1.24.0
+matplotlib>=3.7.0
 sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
 pydantic>=2.0.0
-requests>=2.31.0
-openpyxl>=3.1.2
-reportlab>=4.0.0
-zipfile36>=0.1.3
+
+# Inteligência Artificial (Squad Horizon-Blue / Antigravity)
+langgraph>=0.0.30
+pydantic-ai>=0.0.1
+anthropic>=0.30.0
+google-genai>=0.2.0
 openai>=1.50.0
 ms-swift[llm]>=3.0.0
+voyageai>=0.3.0
+requests>=2.31.0
+
+# Extração & Parsing
 PyMuPDF>=1.24.0
 pdfplumber>=0.10.0
+
+# Relatórios & PDF
+reportlab>=4.0.0
 weasyprint>=60.0
 jinja2>=3.1.0
+openpyxl>=3.1.0
+zipfile36>=0.1.3
+Pillow>=10.0.0
+
+# Ferramentas & Testes
+python-dotenv>=1.0.0
+pytest>=8.0.0
+
+# Autenticação JWT
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+
+# Migrações
+alembic>=1.13.0
+
+# Supabase
 supabase>=2.10.0
-voyageai>=0.3.0
