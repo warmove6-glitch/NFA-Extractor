@@ -115,15 +115,25 @@ class AuditTask(Base):
 
 def _carregar_database_url() -> str:
     db_url = os.getenv("DATABASE_URL", "")
-    if db_url:
-        return db_url
+    if not db_url:
+        env_path = Path(__file__).parent.parent.parent / "config.env"
+        if env_path.exists():
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                if line.startswith("DATABASE_URL=") and not line.startswith("#"):
+                    db_url = line.split("=", 1)[1].strip()
+                    break
+    if not db_url:
+        return ""
 
-    env_path = Path(__file__).parent.parent.parent / "config.env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            if line.startswith("DATABASE_URL=") and not line.startswith("#"):
-                return line.split("=", 1)[1].strip()
-    return ""
+    # Em produção (ENV=prod|production), força sslmode=require para Postgres
+    # remoto. Não toca em sqlite/localhost (DBs locais).
+    env_label = os.getenv("ENV", "").lower()
+    if env_label in ("prod", "production") and "postgresql" in db_url:
+        if "@localhost" not in db_url and "@127.0.0.1" not in db_url:
+            if "sslmode=" not in db_url:
+                separador = "&" if "?" in db_url else "?"
+                db_url = f"{db_url}{separador}sslmode=require"
+    return db_url
 
 
 def get_engine():
