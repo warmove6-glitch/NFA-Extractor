@@ -1,65 +1,27 @@
+"""
+ORGATEC – Pipeline de auditoria em background.
+
+Orquestra: extração PDF/XML → análise quantitativa → IA → geração de PDF.
+Estado da task persistido via api.services.auditoria_tasks.tasks_status.
+"""
+
+import logging
 import os
 import tempfile
-import time
-import logging
-from typing import Any, List
+from typing import List
+
 from fastapi import UploadFile
-from src.domain.extractor import extrair_notas
+
+from api.services.auditoria_tasks import tasks_status  # re-export para callers
 from src.application.analytics_engine import processar_para_dataframe
-from src.domain.agents_engine import rodar_auditoria_completa
 from src.application.reports.pdf_report import gerar_pdf
-from src.infrastructure.audit_task_repo import (
-    cleanup_old_tasks,
-    get_task,
-    task_exists,
-    upsert_task,
-)
-from src.infrastructure.database_v2 import SessionLocal, Laudo
+from src.domain.agents_engine import rodar_auditoria_completa
+from src.domain.extractor import extrair_notas
+from src.infrastructure.database_v2 import Laudo, SessionLocal
 
 logger = logging.getLogger(__name__)
 
-
-class _DbTasksProxy:
-    """Backend persistente para status de tasks (PostgreSQL/SQLite via SQLAlchemy).
-
-    Mantém a mesma interface (__setitem__, __getitem__, __contains__, get) do
-    antigo proxy in-memory para zero impacto em callers. Cleanup oportunístico
-    no write (limita execução a 1×/min).
-    """
-
-    def __init__(self, ttl_seconds: int = 3600) -> None:
-        self.ttl = ttl_seconds
-        self._last_cleanup = 0.0
-        self._cleanup_interval = 60.0
-
-    def _maybe_cleanup(self) -> None:
-        now = time.time()
-        if now - self._last_cleanup >= self._cleanup_interval:
-            try:
-                cleanup_old_tasks(self.ttl)
-            except Exception as exc:
-                logger.warning("cleanup tasks falhou: %s", exc)
-            self._last_cleanup = now
-
-    def __setitem__(self, key: str, value: Any) -> None:
-        self._maybe_cleanup()
-        upsert_task(key, value)
-
-    def __getitem__(self, key: str) -> Any:
-        data = get_task(key)
-        if data is None:
-            raise KeyError(key)
-        return data
-
-    def __contains__(self, key: str) -> bool:
-        return task_exists(key)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        data = get_task(key)
-        return default if data is None else data
-
-
-tasks_status: _DbTasksProxy = _DbTasksProxy()
+__all__ = ["tasks_status", "processar_lote_auditoria"]
 
 async def processar_lote_auditoria(task_id: str, files: List[UploadFile], client_name: str, client_cpf: str):
     """
