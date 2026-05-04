@@ -3,10 +3,16 @@ ORGATEC – Rate Limiting Middleware.
 
 Usa um contador in-memory por IP. Simples, sem dependência de Redis.
 Para produção multi-instance, substituir por slowapi ou redis-based.
+
+Quando rodando atrás de proxy reverso (Nginx, Cloudflare, ALB), define
+TRUSTED_PROXIES (CSV de IPs ou CIDRs) para que o middleware leia
+X-Forwarded-For e use o IP real do cliente.
 """
 
 from __future__ import annotations
 
+import ipaddress
+import os
 import time
 from collections import defaultdict
 from typing import Callable
@@ -18,6 +24,54 @@ from starlette.responses import JSONResponse
 # Configuração padrão: 60 requests por minuto por IP
 DEFAULT_RATE_LIMIT = 60
 DEFAULT_WINDOW_SECONDS = 60
+
+
+def _parse_trusted_proxies(raw: str) -> list[ipaddress._BaseNetwork]:
+    """Parse CSV de IPs/CIDRs em redes para checagem de containment."""
+    redes: list[ipaddress._BaseNetwork] = []
+    for entry in (raw or "").split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            redes.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            # Aceita single IPs como /32 (IPv4) ou /128 (IPv6)
+            try:
+                ip = ipaddress.ip_address(entry)
+                redes.append(ipaddress.ip_network(f"{ip}/{ip.max_prefixlen}"))
+            except ValueError:
+                pass
+    return redes
+
+
+_TRUSTED_PROXIES = _parse_trusted_proxies(os.getenv("TRUSTED_PROXIES", ""))
+
+
+def _ip_em_proxies(ip: str) -> bool:
+    if not _TRUSTED_PROXIES:
+        return False
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr in rede for rede in _TRUSTED_PROXIES)
+
+
+def get_client_ip(request: Request) -> str:
+    """Retorna o IP do cliente, lendo X-Forwarded-For se vier de proxy confiável.
+
+    - Sem TRUSTED_PROXIES: usa request.client.host direto (deploy sem proxy).
+    - Com TRUSTED_PROXIES: se o IP imediato for de proxy whitelist, lê o
+      primeiro IP de X-Forwarded-For. Caso contrário, ignora o header.
+    """
+    direct = request.client.host if request.client else "unknown"
+    if not _ip_em_proxies(direct):
+        return direct
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip() or direct
+    return direct
 
 
 class _TokenBucket:
@@ -55,7 +109,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.url.path == "/ping":
             return await call_next(request)
 
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request)
         allowed, remaining = self._bucket.is_allowed(client_ip)
 
         if not allowed:

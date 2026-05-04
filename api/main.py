@@ -6,6 +6,7 @@ Toda lógica de negócio em api/routes/*.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -17,9 +18,21 @@ from api.routes import auditoria
 from api.routes import auth as auth_router
 from api.routes import clientes, agente, metrics, finance
 from src.infrastructure.database_v2 import init_db
+from src.infrastructure.laudos_cleanup import cleanup_laudos_antigos
 from src.infrastructure.logging_config import setup_logging, get_logger
 
 logger = get_logger("orgatec.api")
+
+
+async def _cleanup_loop() -> None:
+    """Tarefa periódica: cleanup de laudos antigos a cada 24h."""
+    intervalo = int(os.getenv("LAUDOS_CLEANUP_INTERVAL_SECONDS", "86400"))
+    while True:
+        try:
+            cleanup_laudos_antigos()
+        except Exception:
+            logger.exception("cleanup laudos falhou")
+        await asyncio.sleep(intervalo)
 
 
 # ── Lifespan ──────────────────────────────────────────────────────────────────
@@ -27,9 +40,13 @@ logger = get_logger("orgatec.api")
 async def lifespan(app: FastAPI):
     setup_logging()
     init_db()
+    cleanup_task = asyncio.create_task(_cleanup_loop())
     logger.info("ORGATEC API v7.2 iniciada")
-    yield
-    logger.info("ORGATEC API v7.2 encerrada")
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+        logger.info("ORGATEC API v7.2 encerrada")
 
 
 # ── App ───────────────────────────────────────────────────────────────────────

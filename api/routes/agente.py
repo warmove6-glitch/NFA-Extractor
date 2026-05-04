@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 
-from api.auth.security import get_current_user, TokenData
+from api.auth.security import TokenData, get_current_user
 from api.schemas import ChatRequest, ChatResponse
 
 router = APIRouter(prefix="/agente", tags=["Agente"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -20,5 +24,10 @@ async def chat_agente(
     try:
         res = perguntar(notas=[], context_ia=request.contexto, pergunta=request.pergunta)
         return ChatResponse(response=res)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        error_id = uuid.uuid4().hex[:8]
+        logger.exception("Erro em /agente/chat (id=%s)", error_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro interno. ID: {error_id}",
+        )
