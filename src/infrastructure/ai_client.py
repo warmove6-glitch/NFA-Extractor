@@ -1,15 +1,9 @@
 """
-Cliente IA — Arquitetura Otimizada para 6GB VRAM (GTX 1660 Super).
+Cliente IA — Motor único: Claude (Anthropic).
 
-Estratégia:
-  1. Modelo único (qwen2.5:7b) para evitar swap de VRAM.
-  2. System prompts compactos (~50% menos tokens) com output JSON forçado.
-  3. num_predict calibrado por função do agente.
-  4. Circuit breaker in-memory para fallback resiliente.
-  5. Context pruning: métricas numéricas em vez de texto livre.
-  6. Compatibilidade mantida com Claude/Gemini como opt-in.
-
-Squad Antigravity: @Sigma, @Gama, @Auditor via Ollama local.
+Motor: Claude Sonnet (claude-sonnet-4-20250514) via ANTHROPIC_API_KEY.
+Circuit breaker in-memory para resiliência.
+System prompts compactos com output JSON forçado.
 """
 
 from __future__ import annotations
@@ -33,12 +27,7 @@ CONFIG_PATH = Path(__file__).parent.parent.parent / "config.env"
 
 # ── Configuração de Modelos ──────────────────────────────────────────────────
 
-OLLAMA_URL: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-
-# Modelo único para 6GB VRAM — evita swap entre modelos
-LOCAL_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
-
-# Limites de geração por função (menos tokens = menos VRAM no KV-cache)
+# Limites de geração por função do agente
 TOKEN_LIMITS: dict[str, int] = {
     "sigma": 1024,    # Análise quantitativa: números, não prosa
     "gama": 1536,     # Parecer jurídico: precisa de mais contexto
@@ -236,81 +225,13 @@ _breaker = CircuitBreaker(max_failures=3, cooldown=60.0)
 
 # ── Motores de IA ────────────────────────────────────────────────────────────
 
-def _ollama_generate(
-    prompt: str,
-    system: str,
-    callback: Callable | None = None,
-    max_tokens: int = 1024,
-) -> str:
-    """Motor Ollama otimizado para 6GB VRAM (GTX 1660 Super).
-
-    Configurações chave para baixa VRAM:
-    - num_ctx 2048: janela reduzida (~1.2GB KV-cache no q4)
-    - temperature 0.2: determinístico (melhor para auditoria)
-    - repeat_penalty 1.15: evita repetições (problema comum em 7B)
-    - num_gpu 99: força offload total para GPU
-    """
-    modelo = LOCAL_MODEL
-    provider_key = f"ollama:{modelo}"
-
-    if not _breaker.is_available(provider_key):
-        logger.info(f"[Circuit Breaker] {provider_key} em cooldown.")
-        return f"[Ollama Indisponível: {modelo}]"
-
-    t0 = time.monotonic()
-    try:
-        response = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": modelo,
-                "system": system,
-                "prompt": prompt,
-                "stream": True,
-                "options": {
-                    "temperature": 0.2,
-                    "num_predict": max_tokens,
-                    "num_ctx": 2048,
-                    "top_p": 0.85,
-                    "repeat_penalty": 1.15,
-                    "num_gpu": 99,
-                    "num_thread": 4,
-                },
-            },
-            stream=True,
-            timeout=180,
-        )
-        response.raise_for_status()
-
-        full_text = ""
-        for line in response.iter_lines():
-            if not line:
-                continue
-            chunk = json.loads(line.decode("utf-8"))
-            token = chunk.get("response", "")
-            full_text += token
-            if callback:
-                callback(token)
-            if chunk.get("done"):
-                break
-
-        latency = time.monotonic() - t0
-        _breaker.success(provider_key, latency)
-        logger.info(f"Ollama ({modelo}): {len(full_text)} chars em {latency:.1f}s")
-        return full_text
-
-    except Exception as e:
-        _breaker.failure(provider_key)
-        logger.error(f"Ollama ({modelo}): {e}")
-        return f"[Ollama Erro: {e}]"
-
-
 def _claude_generate(
     prompt: str,
     system: str,
     callback: Callable | None = None,
     max_tokens: int = 2048,
 ) -> str:
-    """Motor Claude (opt-in, requer ANTHROPIC_API_KEY)."""
+    """Motor Claude — único motor ativo. Requer ANTHROPIC_API_KEY."""
     import anthropic
 
     api_key = _carregar_env("ANTHROPIC_API_KEY")
@@ -325,7 +246,7 @@ def _claude_generate(
         client = anthropic.Anthropic(api_key=api_key)
         res = ""
         with client.messages.stream(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": prompt}],
@@ -342,50 +263,6 @@ def _claude_generate(
         return f"[Claude Falhou: {e}]"
 
 
-def _gemini_generate(
-    prompt: str,
-    system: str,
-    callback: Callable | None = None,
-    max_tokens: int = 2048,
-) -> str:
-    """Motor Gemini (opt-in, requer GOOGLE_API_KEY)."""
-    from google import genai
-    from google.genai import types
-
-    api_key = _carregar_env("GOOGLE_API_KEY")
-    if not api_key:
-        return "[Gemini Inativo]"
-
-    if not _breaker.is_available("gemini"):
-        return "[Gemini Cooldown]"
-
-    t0 = time.monotonic()
-    modelos = ["gemini-flash-latest", "gemini-1.5-flash-latest"]
-
-    for model_name in modelos:
-        for tentativa in range(2):
-            try:
-                client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(system_instruction=system),
-                )
-                _breaker.success("gemini", time.monotonic() - t0)
-                return response.text
-            except Exception as e:
-                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                    wait = 15 * (tentativa + 1)
-                    logger.warning(f"Gemini rate limit. Aguardando {wait}s...")
-                    time.sleep(wait)
-                    continue
-                logger.error(f"Gemini ({model_name}): {e}")
-                break
-
-    _breaker.failure("gemini")
-    return "[Gemini Falhou]"
-
-
 # ── Detecção de Falha ────────────────────────────────────────────────────────
 
 def _is_failure(result: str) -> bool:
@@ -394,11 +271,9 @@ def _is_failure(result: str) -> bool:
     return result.startswith("[") and any(m in result for m in markers)
 
 
-# Ordem de prioridade: local primeiro (zero custo, zero latência de rede)
+# Motor único: Claude
 _PROVIDER_PRIORITY: list[tuple[str, Callable]] = [
-    ("ollama", _ollama_generate),
     ("claude", _claude_generate),
-    ("gemini", _gemini_generate),
 ]
 
 
@@ -411,12 +286,10 @@ def analisar(
     provedor: str = "auto",
     nome_produtor: str = "",
 ) -> str:
-    """Orquestrador principal — otimizado para 6GB VRAM.
+    """Orquestrador principal — motor Claude.
 
-    Melhorias sobre a versão anterior:
-    - Circuit breaker evita cascata de timeouts
+    - Circuit breaker in-memory para resiliência
     - Token limit calibrado por função do agente
-    - Prioridade local-first (Ollama antes de APIs cloud)
     - Prompt compacto formato tabular
     """
     prompt = _montar_prompt(notas)
@@ -427,20 +300,16 @@ def analisar(
     role = _get_role(sys)
     max_tokens = TOKEN_LIMITS.get(role, 1024)
 
-    # Provedor específico solicitado
-    if provedor != "auto":
-        fn_map = dict(_PROVIDER_PRIORITY)
-        fn = fn_map.get(provedor)
-        if fn:
-            return fn(prompt, sys, callback, max_tokens=max_tokens)
+    # Provedor específico solicitado (atualmente apenas "claude")
+    if provedor == "claude":
+        return _claude_generate(prompt, sys, callback, max_tokens=max_tokens)
 
-    # Modo auto: tenta na ordem de prioridade com circuit breaker
-    for prov_name, fn in _PROVIDER_PRIORITY:
-        result = fn(prompt, sys, callback, max_tokens=max_tokens)
-        if not _is_failure(result):
-            return result
-        if callback:
-            callback(f"\n[!] {prov_name} indisponível. Tentando próximo...\n")
+    # Modo auto: motor único Claude com circuit breaker
+    result = _claude_generate(prompt, sys, callback, max_tokens=max_tokens)
+    if not _is_failure(result):
+        return result
+    if callback:
+        callback("\n[!] claude indisponível.\n")
 
     return "[ERRO] Todos os provedores de IA estão indisponíveis."
 
@@ -462,7 +331,7 @@ def analisar_com_resumo(
 
     role = _get_role(system)
     max_tokens = TOKEN_LIMITS.get(role, 1024)
-    return _ollama_generate(prompt, system, callback, max_tokens=max_tokens)
+    return _claude_generate(prompt, system, callback, max_tokens=max_tokens)
 
 
 def analisar_pipeline(
@@ -530,7 +399,7 @@ def analisar_pipeline(
         separators=(",", ":"),
     )
 
-    return _ollama_generate(
+    return _claude_generate(
         prompt_auditor,
         SYSTEM_AUDITOR,
         callback,

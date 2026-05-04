@@ -1,6 +1,6 @@
 """
-Testes para src/infrastructure/ai_client.py (v7.2).
-Usa mocks para evitar chamadas reais. Testa circuit breaker e nova API.
+Testes para src/infrastructure/ai_client.py — motor único: Claude.
+Usa mocks para evitar chamadas reais. Testa circuit breaker e API pública.
 """
 
 import sys
@@ -96,10 +96,10 @@ class TestIsFailure:
         assert _is_failure("[Claude Inativo]") is True
 
     def test_detecta_falhou(self):
-        assert _is_failure("[Gemini Falhou: timeout]") is True
+        assert _is_failure("[Claude Falhou: timeout]") is True
 
     def test_detecta_erro(self):
-        assert _is_failure("[Ollama Erro: connection refused]") is True
+        assert _is_failure("[Claude Erro: connection refused]") is True
 
     def test_texto_normal_nao_e_falha(self):
         assert _is_failure("Análise completa com sucesso.") is False
@@ -133,22 +133,26 @@ class TestCircuitBreaker:
 
     def test_metrics_retorna_dados(self):
         cb = CircuitBreaker()
-        cb.success("ollama", 1.0)
+        cb.success("claude", 1.0)
         cb.failure("claude")
         m = cb.metrics()
-        assert "ollama" in m
         assert "claude" in m
-        assert m["ollama"]["calls"] == 1
-        assert m["claude"]["failures"] == 1
+        assert m["claude"]["calls"] == 2
 
     def test_half_open_apos_cooldown(self):
-        cb = CircuitBreaker(max_failures=1, cooldown=0.0)  # cooldown zero para teste
-        cb.failure("test")
-        assert cb.is_available("test") is False
-        # Com cooldown=0, já deve permitir
-        import time
-        time.sleep(0.01)
-        assert cb.is_available("test") is True
+        import time as time_module
+        cb = CircuitBreaker(max_failures=1, cooldown=60.0)
+
+        with patch('src.infrastructure.ai_client.time') as mock_time:
+            agora = time_module.monotonic()
+            mock_time.monotonic.return_value = agora
+            cb.failure("test")
+            # Circuito aberto — cooldown não passou
+            assert cb.is_available("test") is False
+
+            # Simula 120s no futuro (> cooldown de 60s)
+            mock_time.monotonic.return_value = agora + 120.0
+            assert cb.is_available("test") is True
 
 
 # ─── Testes: Token Limits ────────────────────────────────────────────────────
@@ -165,41 +169,31 @@ class TestTokenLimits:
         assert TOKEN_LIMITS["etl"] < TOKEN_LIMITS["sigma"]
 
 
-# ─── Testes: analisar() — fallback chain ─────────────────────────────────────
+# ─── Testes: analisar() — motor Claude ───────────────────────────────────────
 
 class TestAnalisar:
 
-    def test_retorna_ollama_quando_primeiro_provedor(self, notas_simples):
-        """Com prioridade local-first, Ollama é o primeiro."""
-        texto = 'Análise via Ollama Mock'
-        with patch('src.infrastructure.ai_client._ollama_generate', return_value=texto):
+    def test_retorna_claude_como_motor(self, notas_simples):
+        """Motor único é Claude."""
+        texto = 'Análise via Claude Mock'
+        with patch('src.infrastructure.ai_client._claude_generate', return_value=texto):
             resultado = analisar(notas_simples)
             assert resultado == texto
 
-    def test_fallback_quando_ollama_falha(self, notas_simples):
-        """Se Ollama falha, tenta Claude."""
-        texto_claude = 'Análise via Claude Mock'
-        with patch('src.infrastructure.ai_client._ollama_generate', return_value='[Ollama Erro: timeout]'), \
-             patch('src.infrastructure.ai_client._claude_generate', return_value=texto_claude):
-            resultado = analisar(notas_simples)
-            assert resultado == texto_claude
-
     def test_todos_falham_retorna_erro(self, notas_simples):
-        """Se todos os provedores falham, retorna mensagem de erro."""
-        with patch('src.infrastructure.ai_client._ollama_generate', return_value='[Ollama Erro]'), \
-             patch('src.infrastructure.ai_client._claude_generate', return_value='[Claude Inativo]'), \
-             patch('src.infrastructure.ai_client._gemini_generate', return_value='[Gemini Falhou]'):
+        """Se Claude falha, retorna mensagem de erro."""
+        with patch('src.infrastructure.ai_client._claude_generate', return_value='[Claude Inativo]'):
             resultado = analisar(notas_simples)
             assert 'ERRO' in resultado
 
     def test_provedor_especifico(self, notas_simples):
-        """Modo provedor=gemini deve chamar apenas Gemini."""
-        with patch('src.infrastructure.ai_client._gemini_generate', return_value='Gemini OK'):
-            resultado = analisar(notas_simples, provedor='gemini')
-            assert resultado == 'Gemini OK'
+        """Modo provedor=claude chama Claude diretamente."""
+        with patch('src.infrastructure.ai_client._claude_generate', return_value='Claude OK'):
+            resultado = analisar(notas_simples, provedor='claude')
+            assert resultado == 'Claude OK'
 
     def test_resultado_sempre_string(self, notas_simples):
-        with patch('src.infrastructure.ai_client._ollama_generate', return_value='OK'):
+        with patch('src.infrastructure.ai_client._claude_generate', return_value='OK'):
             resultado = analisar(notas_simples)
             assert isinstance(resultado, str)
             assert len(resultado) > 0
@@ -209,9 +203,9 @@ class TestAnalisar:
 
 class TestAnalisarComResumo:
 
-    def test_chama_ollama_com_json_compacto(self):
+    def test_chama_claude_com_json_compacto(self):
         resumo = {"total_notas": 10, "valor": 50000}
-        with patch('src.infrastructure.ai_client._ollama_generate', return_value='{"ok":true}') as mock:
+        with patch('src.infrastructure.ai_client._claude_generate', return_value='{"ok":true}') as mock:
             resultado = analisar_com_resumo(resumo, SYSTEM_SIGMA)
             assert resultado == '{"ok":true}'
             # Verifica que o prompt é JSON compacto
