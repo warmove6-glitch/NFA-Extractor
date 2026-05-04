@@ -65,10 +65,56 @@ class TokenPair(BaseModel):
     expires_in: int  # segundos até expiração do access token
 
 
+# ── Política de Senha ────────────────────────────────────────────────────────
+
+MIN_PASSWORD_LENGTH = 12
+
+
+class PasswordPolicyError(ValueError):
+    """Senha não atende à política mínima."""
+
+
+def validate_password(password: str, *, email: str = "", nome: str = "") -> None:
+    """Valida senha contra política mínima.
+
+    Regras:
+    - Pelo menos 12 caracteres
+    - Não pode conter o local-part do email
+    - Não pode conter palavras de >=4 chars do nome
+    - Precisa misturar letras + dígitos
+    """
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise PasswordPolicyError(
+            f"Senha precisa ter pelo menos {MIN_PASSWORD_LENGTH} caracteres."
+        )
+    if not (any(c.isalpha() for c in password) and any(c.isdigit() for c in password)):
+        raise PasswordPolicyError("Senha precisa conter letras e dígitos.")
+    if email:
+        local = email.split("@")[0].lower()
+        if len(local) >= 4 and local in password.lower():
+            raise PasswordPolicyError("Senha não pode conter parte do email.")
+    if nome:
+        for parte in nome.split():
+            if len(parte) >= 4 and parte.lower() in password.lower():
+                raise PasswordPolicyError("Senha não pode conter parte do nome.")
+
+
 # ── Funções ──────────────────────────────────────────────────────────────────
 
-def hash_password(password: str) -> str:
-    """Gera hash bcrypt da senha."""
+def hash_password(
+    password: str,
+    *,
+    validate: bool = True,
+    email: str = "",
+    nome: str = "",
+) -> str:
+    """Gera hash bcrypt da senha.
+
+    Por padrão valida a política. Para hashing de senhas pré-validadas
+    (ex.: migração ou fixtures de teste), passe validate=False.
+    """
+    if validate:
+        validate_password(password, email=email, nome=nome)
     return pwd_context.hash(password)
 
 

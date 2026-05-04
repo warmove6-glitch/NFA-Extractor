@@ -144,7 +144,11 @@ def seed_admin(
     admin = User(
         nome="Administrador ORGATEC",
         email=admin_email,
-        hashed_password=hash_password(admin_password),
+        hashed_password=hash_password(
+            admin_password,
+            email=admin_email,
+            nome="Administrador ORGATEC",
+        ),
         role="admin",
         is_active=True,
     )
