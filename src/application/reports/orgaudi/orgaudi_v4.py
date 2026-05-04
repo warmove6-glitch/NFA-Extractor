@@ -332,7 +332,12 @@ W = PW - 28 * mm
 
 # Logos (busca em vários caminhos para portabilidade)
 def _logo_path(nome: str) -> str:
-    for base in ("/home/claude", "/mnt/user-data/uploads", "."):
+    for base in (
+        str(Path(__file__).parent),       # mesmo dir do módulo (portável)
+        "/home/claude",
+        "/mnt/user-data/uploads",
+        ".",
+    ):
         p = Path(base) / nome
         if p.exists():
             return str(p)
