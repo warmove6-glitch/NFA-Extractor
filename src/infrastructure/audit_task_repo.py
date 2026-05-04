@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.infrastructure.database_v2 import AuditTask, SessionLocal
@@ -61,12 +61,19 @@ def task_exists(task_id: str) -> bool:
 
 
 def cleanup_old_tasks(ttl_seconds: int = 3600) -> int:
-    """Remove tasks com `updated_at` mais antigas que TTL. Retorna total deletado."""
-    cutoff = datetime.now() - timedelta(seconds=ttl_seconds)
+    """Remove tasks com `updated_at` mais antigas que TTL. Retorna total deletado.
+
+    Usa UTC consistente com AuditTask.updated_at (que é definido por _utcnow()
+    em database_v2.py). Naive datetime.now() causaria offset por timezone local.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
     with SessionLocal() as db:
+        # SQLite armazena datetime como string sem awareness; comparamos com naive
+        # depois de drop tzinfo para ficar compatível em ambos backends.
+        cutoff_compat = cutoff.replace(tzinfo=None)
         deletados = (
             db.query(AuditTask)
-            .filter(AuditTask.updated_at < cutoff)
+            .filter(AuditTask.updated_at < cutoff_compat)
             .delete(synchronize_session=False)
         )
         db.commit()
