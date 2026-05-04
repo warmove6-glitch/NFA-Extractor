@@ -1,45 +1,65 @@
 import os
 import tempfile
+import time
 import logging
-import threading
 from typing import Any, List
 from fastapi import UploadFile
 from src.domain.extractor import extrair_notas
 from src.application.analytics_engine import processar_para_dataframe
 from src.domain.agents_engine import rodar_auditoria_completa
 from src.application.reports.pdf_report import gerar_pdf
+from src.infrastructure.audit_task_repo import (
+    cleanup_old_tasks,
+    get_task,
+    task_exists,
+    upsert_task,
+)
 from src.infrastructure.database_v2 import SessionLocal, Laudo
 
 logger = logging.getLogger(__name__)
 
-# Armazenamento em memória das tasks ativas.
-# TODO (produção): substituir por Redis ou tabela de tasks no PostgreSQL
-#   para sobreviver a reinicializações e suportar múltiplos workers.
-_tasks_lock: threading.Lock   = threading.Lock()
-_tasks_store: dict[str, Any]  = {}
 
+class _DbTasksProxy:
+    """Backend persistente para status de tasks (PostgreSQL/SQLite via SQLAlchemy).
 
-class _ThreadSafeTasksProxy:
-    """Proxy com leitura/escrita atômica sobre o dict de tasks."""
+    Mantém a mesma interface (__setitem__, __getitem__, __contains__, get) do
+    antigo proxy in-memory para zero impacto em callers. Cleanup oportunístico
+    no write (limita execução a 1×/min).
+    """
+
+    def __init__(self, ttl_seconds: int = 3600) -> None:
+        self.ttl = ttl_seconds
+        self._last_cleanup = 0.0
+        self._cleanup_interval = 60.0
+
+    def _maybe_cleanup(self) -> None:
+        now = time.time()
+        if now - self._last_cleanup >= self._cleanup_interval:
+            try:
+                cleanup_old_tasks(self.ttl)
+            except Exception as exc:
+                logger.warning("cleanup tasks falhou: %s", exc)
+            self._last_cleanup = now
 
     def __setitem__(self, key: str, value: Any) -> None:
-        with _tasks_lock:
-            _tasks_store[key] = value
+        self._maybe_cleanup()
+        upsert_task(key, value)
 
     def __getitem__(self, key: str) -> Any:
-        with _tasks_lock:
-            return _tasks_store[key]
+        data = get_task(key)
+        if data is None:
+            raise KeyError(key)
+        return data
 
     def __contains__(self, key: str) -> bool:
-        with _tasks_lock:
-            return key in _tasks_store
+        return task_exists(key)
 
     def get(self, key: str, default: Any = None) -> Any:
-        with _tasks_lock:
-            return _tasks_store.get(key, default)
+        data = get_task(key)
+        return default if data is None else data
 
 
-tasks_status: _ThreadSafeTasksProxy = _ThreadSafeTasksProxy()
+tasks_status: _DbTasksProxy = _DbTasksProxy()
 
 async def processar_lote_auditoria(task_id: str, files: List[UploadFile], client_name: str, client_cpf: str):
     """
@@ -137,4 +157,26 @@ A análise qualitativa da Squad foi omitida para garantir a entrega imediata dos
             logger.info(f"Relatório PDF gerado: {pdf_path}")
         except Exception as e_pdf:
             logger.error(f"Erro crítico ao gerar PDF: {e_pdf}")
-            tasks_status[task_id] = 
+            tasks_status[task_id] = {
+                "status": "erro",
+                "progress": 100,
+                "erro": f"Falha ao gerar PDF: {e_pdf}",
+            }
+            return
+
+        tasks_status[task_id] = {
+            "status": "concluido",
+            "progress": 100,
+            "pdf_path": pdf_path,
+            "total_notas": len(all_notas),
+            "valor_total": valor_total_lote,
+        }
+    except Exception as exc:
+        logger.error(f"Erro processando task {task_id}: {exc}")
+        tasks_status[task_id] = {
+            "status": "erro",
+            "progress": 100,
+            "erro": str(exc),
+        }
+    finally:
+        db.close() 
