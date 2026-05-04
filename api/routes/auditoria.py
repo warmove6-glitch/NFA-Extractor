@@ -13,27 +13,11 @@ from sqlalchemy.orm import Session
 
 from api.auth.security import TokenData, get_current_user
 from api.dependencies import get_db
-from api.schemas.auditoria import EXTENSOES_ACEITAS, TAMANHO_MAX, TAMANHO_MAX_MB
+from api.schemas.auditoria import UploadAuditoriaParams, validar_arquivos
 from api.services.auditoria import processar_lote_auditoria, tasks_status
 from src.infrastructure.database_v2 import Cliente
 
 router = APIRouter(prefix="/auditoria", tags=["Auditoria"])
-
-
-def _validar_arquivo(file: UploadFile) -> None:
-    """Valida extensão e tamanho do arquivo."""
-    nome = file.filename or ""
-    ext = os.path.splitext(nome)[1].lower()
-    if ext not in EXTENSOES_ACEITAS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Extensão '{ext}' não suportada. Aceito: {sorted(EXTENSOES_ACEITAS)}",
-        )
-    if file.size is not None and file.size > TAMANHO_MAX:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Arquivo excede {TAMANHO_MAX_MB} MB.",
-        )
 
 
 @router.post("/upload/{client_id}")
@@ -41,10 +25,16 @@ async def iniciar_auditoria(
     client_id: int,
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
+    params: UploadAuditoriaParams = Depends(),
     db: Session = Depends(get_db),
     current_user: TokenData = Depends(get_current_user),
 ):
-    """Inicia auditoria — exige JWT válido."""
+    """Inicia auditoria — exige JWT válido.
+
+    Query params (via UploadAuditoriaParams):
+    - modo_relatorio: simples | detalhado
+    - formato_relatorio: html | pdf
+    """
     cliente = db.query(Cliente).filter(Cliente.id == client_id).first()
     if not cliente:
         raise HTTPException(
@@ -52,14 +42,18 @@ async def iniciar_auditoria(
             detail=f"Cliente com id={client_id} não encontrado.",
         )
 
-    for f in files:
-        _validar_arquivo(f)
+    # Validação centralizada (extensão + tamanho + qtd) via schema oficial
+    erros = validar_arquivos(files)
+    if erros:
+        raise HTTPException(status_code=400, detail={"erros": erros})
 
     task_id = str(uuid.uuid4())
     tasks_status[task_id] = {
         "status": "iniciado",
         "progress": 0,
-        "owner_sub": current_user.sub,  # ownership para checar nos GETs
+        "owner_sub": current_user.sub,
+        "modo_relatorio": params.modo_relatorio,
+        "formato_relatorio": params.formato_relatorio,
     }
 
     background_tasks.add_task(
@@ -70,7 +64,11 @@ async def iniciar_auditoria(
         cliente.cpf_cnpj,
     )
 
-    return {"task_id": task_id, "message": "Auditoria iniciada com sucesso."}
+    return {
+        "task_id": task_id,
+        "message": "Auditoria iniciada com sucesso.",
+        "params": params.model_dump(),
+    }
 
 
 def _check_task_owner(task_id: str, user: TokenData) -> dict:
