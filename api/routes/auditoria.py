@@ -2,18 +2,11 @@ from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException,
 from sqlalchemy.orm import Session
 from typing import List
 import uuid
+from api.dependencies import get_db
 from api.services.auditoria import processar_lote_auditoria, tasks_status
-from src.infrastructure.database_v2 import SessionLocal, Cliente
+from src.infrastructure.database_v2 import Cliente
 
 router = APIRouter(prefix="/auditoria", tags=["Auditoria"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.post("/upload/{client_id}")
