@@ -6,18 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from api.auth.security import get_current_user, TokenData
+from api.dependencies import get_db
 from api.schemas import ClienteCreate, ClienteResponse
-from src.infrastructure.database_v2 import SessionLocal, Cliente
+from src.infrastructure.database_v2 import Cliente
 
 router = APIRouter(prefix="/clientes", tags=["Clientes"])
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 @router.get("/", response_model=list[ClienteResponse])

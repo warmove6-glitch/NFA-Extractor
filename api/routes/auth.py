@@ -20,7 +20,8 @@ from api.auth.security import (
     TokenData,
     TokenPair,
 )
-from src.infrastructure.database_v2 import SessionLocal, User
+from api.dependencies import get_db
+from src.infrastructure.database_v2 import User
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -44,15 +45,6 @@ class MeResponse(BaseModel):
     email: str
     nome: str
     role: str
-
-
-# ── DB Dependency ────────────────────────────────────────────────────────────
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
