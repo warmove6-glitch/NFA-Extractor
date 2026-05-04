@@ -11,7 +11,7 @@ import time
 import requests
 
 # ─── Configuração ──────────────────────────────────────────────────────────────
-BASE_URL     = "http://127.0.0.1:8085"
+BASE_URL     = "http://127.0.0.1:8081"
 PDF_ROOT     = pathlib.Path(r"C:\Users\Veloso\NFE_GADO_2026")
 SUBPASTAS    = ["RESUMO_DE_NFE_GADO_2026", "ARQUIVO_2026_RESUMO_DE_NFE_GADO_2026"]
 PASTA_RESULT = PDF_ROOT / "RESULTADOS_AUDITORIA"
@@ -209,7 +209,7 @@ def baixar_relatorio(token: str, task_id: str, nome: str) -> pathlib.Path:
 def main() -> None:
     clientes = listar_clientes()
     print("=" * 65)
-    print(f"  AUDITORIA NF-e GADO 2026 — {len(clientes)} produtores")
+    print(f"  AUDITORIA NF-e GADO 2026 - {len(clientes)} produtores")
     print("=" * 65)
 
     token = autenticar()
@@ -237,17 +237,17 @@ def main() -> None:
                 resultado = {}
             veredito = dados.get("veredito") or resultado.get("veredito") or "—"
             notas    = dados.get("total_notas") or resultado.get("total_notas") or "?"
-            resultados.append((nome, "✅", veredito, notas, destino.name))
+            resultados.append((nome, "OK", veredito, notas, destino.name))
             sucesso += 1
 
         except Exception as e:
             log(f"ERRO: {e}", indent=1)
-            resultados.append((nome, "❌", str(e)[:60], "—", "—"))
+            resultados.append((nome, "ERR", str(e)[:60], "-", "-"))
             falha += 1
 
     # ─── Resumo final ──────────────────────────────────────────────────────────
     print("\n" + "=" * 65)
-    print(f"  RESUMO — {sucesso} sucesso(s) / {falha} falha(s)")
+    print(f"  RESUMO - {sucesso} sucesso(s) / {falha} falha(s)")
     print("=" * 65)
     print(f"  {'PRODUTOR':<22} {'ST':<3} {'VEREDITO':<25} {'NOTAS':>5}")
     print("-" * 65)

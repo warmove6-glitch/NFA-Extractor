@@ -106,6 +106,19 @@ class Laudo(Base):
     cliente = relationship("Cliente", back_populates="laudos")
 
 
+class AuditTask(Base):
+    """Tabela de status/resultado de tasks de auditoria em andamento ou concluídas."""
+
+    __tablename__ = "audit_tasks"
+
+    task_id: Mapped[str]         = mapped_column(String(128), primary_key=True)
+    status: Mapped[str]          = mapped_column(String(32), nullable=False, default="iniciado")
+    progress: Mapped[int]        = mapped_column(Integer, nullable=False, default=0)
+    payload_json: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
 # ── Conexão resiliente ───────────────────────────────────────────────────────
 
 def _carregar_database_url() -> str:
