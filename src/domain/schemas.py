@@ -5,7 +5,13 @@ from datetime import datetime
 class AuditoriaMacroSchema(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True)
 
-    contribuinte_id: str = Field(..., pattern=r'^(\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})$')
+    # Aceita CPF/CNPJ formatado OU só dígitos (Cliente.cpf_cnpj é normalizado
+    # para dígitos puros pelo schema clientes.py, mas o pipeline pode receber
+    # ambos formatos vindos de outras fontes).
+    contribuinte_id: str = Field(
+        ...,
+        pattern=r'^(\d{11}|\d{14}|\d{3}\.\d{3}\.\d{3}-\d{2}|\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})$',
+    )
     ano_exercicio: int = Field(default=datetime.now().year)
     
     # KPIs Físicos
