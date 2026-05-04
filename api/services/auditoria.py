@@ -7,6 +7,7 @@ Estado da task persistido via api.services.auditoria_tasks.tasks_status.
 
 import logging
 import os
+import secrets
 import tempfile
 from typing import List
 
@@ -36,7 +37,14 @@ async def processar_lote_auditoria(task_id: str, files: List[UploadFile], client
         
         valor_total_lote = 0
         for file in files:
-            file_path = os.path.join(temp_dir, file.filename)
+            # Sanitiza filename do client contra path traversal:
+            # gera nome aleatório preservando apenas a extensão original.
+            ext = os.path.splitext(file.filename or "")[1].lower()
+            if ext not in {".pdf", ".xml"}:
+                logger.warning("Extensão rejeitada: %s", ext)
+                continue
+            safe_name = f"{secrets.token_hex(8)}{ext}"
+            file_path = os.path.join(temp_dir, safe_name)
             with open(file_path, "wb") as buffer:
                 content = await file.read()
                 buffer.write(content)

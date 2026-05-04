@@ -6,7 +6,9 @@ GET  /auth/me       → devolve dados do usuário autenticado
 POST /auth/seed     → cria usuário admin inicial (apenas se não existir)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -110,19 +112,42 @@ def me(current_user: TokenData = Depends(get_current_user), db: Session = Depend
 
 
 @router.post("/seed", status_code=201)
-def seed_admin(db: Session = Depends(get_db)):
-    """Cria o usuário admin padrão se ainda não existir. Remover em produção."""
-    existing = db.query(User).filter(User.email == "admin@orgatec.com.br").first()
-    if existing:
-        return {"detail": "Usuário admin já existe."}
+def seed_admin(
+    x_seed_token: str | None = Header(default=None, alias="X-Seed-Token"),
+    db: Session = Depends(get_db),
+):
+    """Cria o usuário admin inicial.
+
+    Segurança:
+    - Exige header X-Seed-Token igual a env SEED_BOOTSTRAP_TOKEN
+    - Senha do admin lida de env ADMIN_INITIAL_PASSWORD (mín 12 chars)
+    - Falha se já houver qualquer admin no banco (one-shot)
+    - Senha NÃO retornada na resposta
+    """
+    seed_token_env = os.getenv("SEED_BOOTSTRAP_TOKEN", "")
+    if not seed_token_env or x_seed_token != seed_token_env:
+        # Resposta neutra para não revelar existência do endpoint
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@orgatec.com.br")
+    admin_password = os.getenv("ADMIN_INITIAL_PASSWORD", "")
+    if not admin_password or len(admin_password) < 12:
+        raise HTTPException(
+            status_code=400,
+            detail="ADMIN_INITIAL_PASSWORD não configurado ou < 12 caracteres.",
+        )
+
+    # One-shot: se já existe qualquer admin, recusa
+    if db.query(User).filter(User.role == "admin").first():
+        raise HTTPException(status_code=409, detail="Admin já existe.")
 
     admin = User(
         nome="Administrador ORGATEC",
-        email="admin@orgatec.com.br",
-        hashed_password=hash_password("Admin@2024!"),
+        email=admin_email,
+        hashed_password=hash_password(admin_password),
         role="admin",
         is_active=True,
     )
     db.add(admin)
     db.commit()
-    return {"detail": "Usuário admin criado.", "email": "admin@orgatec.com.br", "senha": "Admin@2024!"}
+    return {"detail": "Usuário admin criado.", "email": admin_email}
